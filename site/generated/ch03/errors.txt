@@ -1,0 +1,12 @@
+$ go run . -scenario nope
+banditsim: usage error: unknown scenario "nope" (known: close, easy, needle, spread)
+exit status 2
+$ go run . -policy epsgreedy:lots
+banditsim: usage error: policy "epsgreedy:lots": bad epsilon: strconv.ParseFloat: parsing "lots": invalid syntax
+exit status 2
+$ go run . -policy epsgreedy:2
+banditsim: usage error: epsilon must be between 0 and 1: got 2
+exit status 2
+$ go run . -policy thompson
+banditsim: usage error: unknown policy "thompson" (known: epsgreedy, ucb1)
+exit status 2

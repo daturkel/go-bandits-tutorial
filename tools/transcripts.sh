@@ -54,9 +54,10 @@ ch02() {
 ch03() {
   t ch03 errors 'go run . -scenario nope' 'go run . -policy epsgreedy:lots' 'go run . -policy epsgreedy:2' 'go run . -policy thompson'
   t ch03 test-v 'go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit'
-  t ch03 vet 'go vet ./_examples; echo "exit status: $?"'
+  t ch03 vet 'go vet ./_examples/vetbug; echo "exit status: $?"'
+  t ch03 typednil 'go run ./_examples/typednil'
   t ch03 bench 'go test -run "^$" -bench . -benchmem ./bandit'
-  t ch03 cover 'go test -cover ./...'
+  t ch03 cover 'go test -count=1 -cover ./...'
   t ch03 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . -seed 7 -steps 1000'
 }
 

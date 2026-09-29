@@ -1,0 +1,31 @@
+$ go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit
+=== RUN   TestNewEnvValidation
+=== RUN   TestNewEnvValidation/valid
+=== RUN   TestNewEnvValidation/empty
+=== RUN   TestNewEnvValidation/above_one
+=== RUN   TestNewEnvValidation/negative
+=== RUN   TestNewEnvValidation/nan
+=== RUN   TestNewEnvValidation/reports_all
+--- PASS: TestNewEnvValidation (0.00s)
+    --- PASS: TestNewEnvValidation/valid (0.00s)
+    --- PASS: TestNewEnvValidation/empty (0.00s)
+    --- PASS: TestNewEnvValidation/above_one (0.00s)
+    --- PASS: TestNewEnvValidation/negative (0.00s)
+    --- PASS: TestNewEnvValidation/nan (0.00s)
+    --- PASS: TestNewEnvValidation/reports_all (0.00s)
+=== RUN   TestNewPolicy
+=== RUN   TestNewPolicy/ucb1
+=== RUN   TestNewPolicy/epsgreedy
+=== RUN   TestNewPolicy/epsgreedy:0.05
+=== RUN   TestNewPolicy/epsgreedy:1.5
+=== RUN   TestNewPolicy/thompson
+=== RUN   TestNewPolicy/#00
+--- PASS: TestNewPolicy (0.00s)
+    --- PASS: TestNewPolicy/ucb1 (0.00s)
+    --- PASS: TestNewPolicy/epsgreedy (0.00s)
+    --- PASS: TestNewPolicy/epsgreedy:0.05 (0.00s)
+    --- PASS: TestNewPolicy/epsgreedy:1.5 (0.00s)
+    --- PASS: TestNewPolicy/thompson (0.00s)
+    --- PASS: TestNewPolicy/#00 (0.00s)
+PASS
+ok  	banditlab/bandit	(cached)

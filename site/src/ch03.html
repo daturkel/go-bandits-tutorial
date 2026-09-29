@@ -1,0 +1,146 @@
+<h2>What you will build</h2>
+<p>Chapter 2 left several failure modes unhandled: a probability of 1.7 was accepted, an unknown scenario returned a bare <code>false</code>, and a misbehaving policy would crash with an index error. This chapter makes every one of them an explicit, testable <code>error</code>, and then puts a real test suite around the simulator: table-driven tests, a golden-file test for the CLI's output, and benchmarks that tell you what a policy step costs.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li><code>error</code> as an ordinary interface value; returning and checking errors</li>
+  <li>Sentinel errors, custom error types, wrapping with <code>%w</code>, and <code>errors.Is</code>, <code>errors.As</code>, <code>errors.Join</code></li>
+  <li>When to <code>panic</code> instead</li>
+  <li>The <code>testing</code> package: table-driven tests, subtests, <code>t.Helper</code>, <code>t.Fatal</code> vs. <code>t.Error</code>, <code>t.TempDir</code></li>
+  <li>Golden files and a custom <code>-update</code> flag</li>
+  <li>Benchmarks with <code>b.Loop</code>, allocation reporting, and coverage</li>
+  <li><code>gofmt</code> and <code>go vet</code></li>
+</ul>
+
+<h2>Step 1: errors are values</h2>
+<p>Go has no exceptions. A function that can fail returns an <code>error</code> as its last result, and the caller decides what to do about it on the very next line:</p>
+<figure class="term"><figcaption><span class="fname">the shape of nearly every Go call that can fail</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">res, err := bandit.Run(env, pol, steps)</span><span class="ln out">if err != nil {</span><span class="ln out">    return err            // or wrap it, or handle it, or log it</span><span class="ln out">}</span></code></pre></figure>
+<p><code>error</code> is just an interface with one method, <code>Error() string</code>. Anything that has that method is an error, which is why the same mechanism covers a plain message, a rich struct, and a chain of causes.</p>
+
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p>In Python an exception unwinds the stack until something catches it, and any line can raise. In Go, control flow is visible: every place that can fail says so in its signature, and every caller writes down what happens. It is more typing, and the payoff is that reading a function tells you all of its exits. The unwinding mechanism does exist (<code>panic</code> and <code>recover</code>), but it is reserved for bugs, not for expected failures. As a rule: if a caller could reasonably cause it, return an error; if only a programmer mistake could cause it, panic.</p>
+</aside>
+
+<p>The error vocabulary for this project lives in one file:</p>
+<!-- include: ch03/bandit/errors.go diff -->
+<p>There are two kinds of error here, and they answer two different questions:</p>
+<ul>
+  <li><strong>Sentinel errors</strong> such as <code>ErrNoArms</code> are package-level values made with <code>errors.New</code>. They answer "<em>what</em> went wrong?" Callers compare against them with <code>errors.Is</code>.</li>
+  <li><strong>Error types</strong> such as <code>ArmError</code> carry data. They answer "<em>where</em> or <em>with what</em>?" Callers extract them with <code>errors.As</code>. The <code>Unwrap</code> method links the outer error to the one it wraps, so <code>errors.Is(err, ErrInvalidProbability)</code> still finds the sentinel inside an <code>ArmError</code>.</li>
+</ul>
+<p>Note the pointer receivers again: <code>*ArmError</code> is the error type, and code creates and matches it as a pointer.</p>
+
+<h2>Step 2: validating the environment</h2>
+<p>Constructors now return <code>(*Env, error)</code>. This one reports <em>every</em> bad probability at once, which is kinder than making the user fix them one at a time:</p>
+<!-- include: ch03/bandit/env.go#NewEnv diff -->
+<p><code>fmt.Errorf</code> with <code>%w</code> <strong>wraps</strong> an error: the message gets added context (<code>"invalid environment: ..."</code>), and the original stays reachable through <code>Unwrap</code>. Use <code>%v</code> instead of <code>%w</code> and you get the text but sever the chain, which is a bug to avoid when callers need to inspect the cause. <code>errors.Join</code> combines several errors into one whose <code>Unwrap() []error</code> exposes all of them; <code>errors.Is</code> and <code>errors.As</code> search every branch.</p>
+<p>The condition is written <code>!(p &gt;= 0 &amp;&amp; p &lt;= 1)</code> rather than <code>p &lt; 0 || p &gt; 1</code> on purpose: every comparison with NaN is false, so the second form would let NaN slip through as "valid".</p>
+
+<h2>Step 3: lookups and parsing</h2>
+<p>The scenario lookup graduates from <code>(value, bool)</code> to an error that names the culprit and the valid choices:</p>
+<!-- include: ch03/bandit/scenarios.go#Scenario diff -->
+<p>Policies can now be configured from a spec string such as <code>epsgreedy:0.05</code>, and parsing brings a new source of errors, the standard library's own:</p>
+<!-- include: ch03/bandit/policy.go#NewPolicy diff -->
+<p><code>strings.Cut</code> splits on the first colon. When <code>strconv.ParseFloat</code> fails, its error already says what was wrong; we wrap it with the spec that caused it, keeping the original reachable with <code>%w</code>. The constructors validate as well, so <code>epsgreedy:2</code> fails with <code>ErrInvalidEpsilon</code>.</p>
+<p>Look closely at the two <code>if err != nil { return nil, err }</code> blocks. They look redundant (<code>return NewUCB1(nArms)</code> would type-check), and they are not. <code>NewUCB1</code> returns a <code>*UCB1</code>, and on failure that pointer is <code>nil</code>. Returning it as a <code>Policy</code> would wrap the nil pointer in a non-nil interface value, so the caller's <code>pol == nil</code> would be false. A small program shows it firing:</p>
+<!-- include: ch03/_examples/typednil/main.go title="_examples/typednil/main.go" lines=21-38 -->
+<!-- transcript: ch03/typednil -->
+<p>An interface value is a (type, value) pair, and it is <code>nil</code> only when both are empty. In <code>direct</code>, the type slot holds <code>*main.Greedy</code>. There is a regression test for this in the suite, and chapter 4 removes the repetition with a generic helper.</p>
+
+<h2>Step 4: the runner reports a misbehaving policy</h2>
+<p>A <code>Policy</code> is now an interface that anyone can implement, so the runner should not trust the arm it returns:</p>
+<!-- include: ch03/bandit/sim.go#Run diff -->
+<p>The error has three layers of context (step, policy name, arm) and still wraps <code>ErrArmOutOfRange</code>, so a caller can test for the category without parsing text. Returning the partial <code>Result</code> alongside the error is legal, but the convention is that the other results are only meaningful when <code>err == nil</code>; document it if you deviate, as the comment does.</p>
+
+<h2>Step 5: main becomes testable</h2>
+<p>A function that calls <code>os.Exit</code> cannot be tested. The standard fix is to move all the work into a function that takes its inputs and outputs as parameters and <em>returns</em> an error, leaving <code>main</code> a three-line shell:</p>
+<!-- include: ch03/main.go#main,errUsage,run diff -->
+<p><code>flag.ContinueOnError</code> makes flag parsing return errors instead of exiting, and <code>io.Writer</code> lets tests capture the output in a buffer while <code>main</code> passes <code>os.Stdout</code>. A second sentinel, <code>errUsage</code>, marks "you invoked the program wrong" so that <code>main</code> can choose exit status 2 for those and 1 for everything else, using <code>errors.Is</code>; with the two-<code>%w</code> form of <code>fmt.Errorf</code> (Go 1.20+) the error keeps <em>both</em> the usage marker and the specific cause.</p>
+<!-- transcript: ch03/errors -->
+<p>The <code>strconv</code> message in the second case is the original error, still intact several layers down. (<code>go run</code> prints the <code>exit status</code> lines itself.) Note that nothing is printed before the error: <code>run</code> builds every environment and policy first, and only then starts writing the report.</p>
+
+<h2>Step 6: tests</h2>
+<p>A test is a function <code>TestXxx(t *testing.T)</code> in a file ending in <code>_test.go</code>, in the same directory (and by default the same package) as the code. <code>go test</code> compiles them together, runs them, and reports. There are no fixtures and no assertion library: you use ordinary <code>if</code> statements and report failures with <code>t.Errorf</code> (mark failed, keep going) or <code>t.Fatalf</code> (mark failed, stop this test).</p>
+
+<h3>Table-driven tests and subtests</h3>
+<p>The idiomatic shape for a function with many cases is a slice of structs, one per case, run in a loop with <code>t.Run</code>. Each case becomes a named subtest that can pass or fail and be selected on its own:</p>
+<!-- include: ch03/bandit/env_test.go#TestNewEnvValidation -->
+<p>Adding a case is one line. The test checks the two ways errors are inspected: <code>errors.Is</code> for the category, and <code>errors.As</code> to reach the <code>*ArmError</code> buried inside the join and the wrapper.</p>
+<!-- transcript: ch03/test-v -->
+<p>Subtest names come from the case's <code>name</code> field, with spaces turned into underscores. The last policy case has an empty spec, so Go names it <code>#00</code>. You can run one case with <code>go test -run 'TestNewEnvValidation/nan'</code>.</p>
+
+<h3>Errors from the standard library, stubs, and helpers</h3>
+<p>The parser test checks that the underlying <code>strconv</code> error survived all the wrapping:</p>
+<!-- include: ch03/bandit/policy_test.go#TestNewPolicyBadEpsilonText,TestNewPolicyFailureReturnsNilInterface -->
+<p>To test the runner's guard we need a policy that misbehaves. Because interfaces are satisfied implicitly, a test-local type with three trivial methods is all it takes; no mocking framework:</p>
+<!-- include: ch03/bandit/sim_test.go#misbehaving,misbehaving.Name,misbehaving.Select,misbehaving.Update,TestRunRejectsOutOfRangeArm -->
+<p>The <code>run</code> helper in the same file calls <code>t.Helper()</code>, which tells the testing package to report failures at the <em>caller's</em> line rather than inside the helper.</p>
+<!-- include: ch03/bandit/sim_test.go#run -->
+
+<h3>Determinism and a golden file</h3>
+<p>Because every random draw comes from a seeded generator, simulations are ordinary deterministic functions and can be tested with equality: same seed, same result. The CLI's whole output is pinned with a <strong>golden file</strong>: the expected text lives in <code>testdata/</code> (a directory the Go tool ignores when building), and the test compares against it:</p>
+<!-- include: ch03/main_test.go#update,TestGolden -->
+<p><code>-update</code> is a flag the test registers itself. When you change behaviour on purpose, <code>go test -run TestGolden -update</code> rewrites the file and <code>git diff</code> shows precisely what changed. If a refactor changes a number by accident, the test tells you.</p>
+
+<h2>Step 7: gofmt and go vet</h2>
+<p><code>gofmt</code> is the single canonical formatter: no config, no style debates, and <code>gofmt -l .</code> lists files that differ. <code>go vet</code> is a static checker for mistakes the compiler accepts. A program with a format-verb mismatch:</p>
+<!-- include: ch03/_examples/vetbug/main.go title="_examples/vetbug/main.go" -->
+<!-- transcript: ch03/vet -->
+<p>Both belong in your editor's save hook and in CI. <code>go test</code> also runs a subset of vet's checks automatically.</p>
+
+<h2>Step 8: benchmarks</h2>
+<p>A benchmark is a function <code>BenchmarkXxx(b *testing.B)</code>. Since Go 1.24 the loop is <code>for b.Loop() { ... }</code>: the framework decides how many iterations to run, and setup before the loop is excluded from the timing. (Older code writes <code>for i := 0; i &lt; b.N; i++</code>; it still works.)</p>
+<!-- include: ch03/bandit/bench_test.go -->
+<p><code>b.Run</code> creates sub-benchmarks, one per policy, and <code>ReportAllocs</code> adds memory statistics. Run only benchmarks (<code>-run '^$'</code> selects no tests):</p>
+<!-- transcript: ch03/bench -->
+<p>Read the columns as: iterations run, nanoseconds per operation, bytes allocated per operation, allocations per operation. On the machine that produced this output, one <code>Select</code> plus <code>Update</code> costs on the order of a hundred nanoseconds with <strong>zero allocations</strong>, and a whole 10,000-step run takes about a millisecond. The 82 KB and 11 allocations per run are set-up costs paid once per simulation (the 80 KB regret curve, plus the environment, policy and generators the benchmark builds inside its loop), not per-step garbage. Those numbers are hardware-specific; only the relationships transfer. That matters later: when the service is under load (chapter 11), "zero allocations per decision" is the property to protect.</p>
+<p>Benchmarks tell you what a change did, not what to change. Compare runs with <code>benchstat</code> and profile with <code>pprof</code>, which chapter 11 introduces.</p>
+
+<h3>Coverage</h3>
+<!-- transcript: ch03/cover -->
+<p>Coverage shows which lines tests execute, not whether they check anything. The uncovered part of the root package is mostly <code>main</code> itself, which is exactly why the logic was moved into <code>run</code>.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>From <code>solutions/ch03</code> (<code>-count=1</code> disables test-result caching so the tests really run):</p>
+<!-- transcript: ch03/checkpoint -->
+<p>The run at the bottom is identical in numbers to chapter 2's, as it should be: this chapter changed how failures are reported, not how the simulation behaves. The golden test would have caught it otherwise.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch03</code>.</p>
+
+<details class="exercise">
+  <summary>1. Parse a probability list, with useful errors</summary>
+  <div class="ex-body">
+    <p>Implement <code>ParseProbs(s string) ([]float64, error)</code> in <code>exercises/ch03/ex1</code> for input like <code>"0.2,0.5,0.8"</code>. Errors must name the offending entry ("entry 2: ...") and wrap the cause so that <code>errors.As</code> finds a <code>*strconv.NumError</code> for non-numbers and <code>errors.Is</code> finds <code>ErrOutOfRange</code> for values outside [0, 1].</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch03/ex1/reference/probs.go#ParseProbs -->
+    <p>The important detail is <code>%w</code>, twice. With <code>%v</code> the messages would read the same and every test that inspects the cause would fail.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. A typed error that unwraps to a sentinel</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/ch03/ex2</code>, fill in <code>RangeError</code> (message <code>arm 7 out of range [0, 3)</code>), make it <code>Unwrap</code> to <code>ErrOutOfRange</code>, and implement <code>CheckArm</code>. The last test guards against the typed-nil trap from step 3.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch03/ex2/reference/rangeerr.go#RangeError,RangeError.Error,RangeError.Unwrap,CheckArm -->
+    <p><code>CheckArm</code> ends with a literal <code>return nil</code>. Writing <code>var e *RangeError; return e</code> would return a non-nil <code>error</code> holding a nil pointer, and <code>err != nil</code> would be true.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Remove an allocation</summary>
+  <div class="ex-body">
+    <p><code>Normalize</code> in <code>exercises/ch03/ex3</code> works but allocates a fresh slice on every call. Make it write into <code>dst</code> instead, so a caller who reuses a buffer pays nothing. The test uses <code>testing.AllocsPerRun</code>; run <code>go test -bench . -benchmem ./ex3</code> before and after.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch03/ex3/reference/normalize.go#Normalize -->
+    <p><code>dst = dst[:0]</code> keeps the backing array but resets the length, and <code>append</code> only allocates if the capacity runs out. This <code>append</code>-into-a-caller-buffer shape is used throughout the standard library (<code>strconv.AppendInt</code>, <code>append(buf, ...)</code> on <code>[]byte</code>); the name of a function like that usually starts with <code>Append</code>.</p>
+    </details>
+  </div>
+</details>

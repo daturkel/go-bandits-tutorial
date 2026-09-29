@@ -1,0 +1,5 @@
+$ go vet ./_examples/vetbug; echo "exit status: $?"
+# banditlab/_examples/vetbug
+# [banditlab/_examples/vetbug]
+_examples/vetbug/main.go:7:2: fmt.Printf format %d has arg arm of wrong type string
+exit status: 1

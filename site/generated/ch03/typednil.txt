@@ -1,0 +1,3 @@
+$ go run ./_examples/typednil
+direct:  err=bad configuration  p == nil: false  p is *main.Greedy
+careful: err=bad configuration  p == nil: true   p is <nil>
