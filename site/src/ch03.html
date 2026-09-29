@@ -20,7 +20,7 @@
 
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
-  <p>In Python an exception unwinds the stack until something catches it, and any line can raise. In Go, control flow is visible: every place that can fail says so in its signature, and every caller writes down what happens. It is more typing, and the payoff is that reading a function tells you all of its exits. The unwinding mechanism does exist (<code>panic</code> and <code>recover</code>), but it is reserved for bugs, not for expected failures. As a rule: if a caller could reasonably cause it, return an error; if only a programmer mistake could cause it, panic.</p>
+  <p>In Python an exception unwinds the stack until something catches it, and any line can raise. In Go, control flow is visible: every place that can fail says so in its signature, and every caller writes down what happens. It is more typing, but reading a function shows all of its exits. The unwinding mechanism does exist (<code>panic</code> and <code>recover</code>), but it is reserved for bugs, not for expected failures. As a rule: if a caller could reasonably cause it, return an error; if only a programmer mistake could cause it, panic.</p>
 </aside>
 
 <p>The error vocabulary for this project lives in one file:</p>
@@ -59,7 +59,7 @@
 <!-- include: ch03/main.go#main,errUsage,run diff -->
 <p><code>flag.ContinueOnError</code> makes flag parsing return errors instead of exiting, and <code>io.Writer</code> lets tests capture the output in a buffer while <code>main</code> passes <code>os.Stdout</code>. A second sentinel, <code>errUsage</code>, marks "you invoked the program wrong" so that <code>main</code> can choose exit status 2 for those and 1 for everything else, using <code>errors.Is</code>; with the two-<code>%w</code> form of <code>fmt.Errorf</code> (Go 1.20+) the error keeps <em>both</em> the usage marker and the specific cause.</p>
 <!-- transcript: ch03/errors -->
-<p>The <code>strconv</code> message in the second case is the original error, still intact several layers down. (<code>go run</code> prints the <code>exit status</code> lines itself.) Note that nothing is printed before the error: <code>run</code> builds every environment and policy first, and only then starts writing the report.</p>
+<p>The <code>strconv</code> message in the second case is the original error, still intact several layers down. (<code>go run</code> prints the <code>exit status</code> lines itself.) Nothing is printed before the error: <code>run</code> builds every environment and policy first, and only then starts writing the report.</p>
 
 <h2>Step 6: tests</h2>
 <p>A test is a function <code>TestXxx(t *testing.T)</code> in a file ending in <code>_test.go</code>, in the same directory (and by default the same package) as the code. <code>go test</code> compiles them together, runs them, and reports. There are no fixtures and no assertion library: you use ordinary <code>if</code> statements and report failures with <code>t.Errorf</code> (mark failed, keep going) or <code>t.Fatalf</code> (mark failed, stop this test).</p>
@@ -82,7 +82,7 @@
 <h3>Determinism and a golden file</h3>
 <p>Because every random draw comes from a seeded generator, simulations are ordinary deterministic functions and can be tested with equality: same seed, same result. The CLI's whole output is pinned with a <strong>golden file</strong>: the expected text lives in <code>testdata/</code> (a directory the Go tool ignores when building), and the test compares against it:</p>
 <!-- include: ch03/main_test.go#update,TestGolden -->
-<p><code>-update</code> is a flag the test registers itself. When you change behaviour on purpose, <code>go test -run TestGolden -update</code> rewrites the file and <code>git diff</code> shows precisely what changed. If a refactor changes a number by accident, the test tells you.</p>
+<p><code>-update</code> is a flag the test registers itself. When you change behaviour on purpose, <code>go test -run TestGolden -update</code> rewrites the file and <code>git diff</code> shows what changed. If a refactor changes a number by accident, the test tells you.</p>
 
 <h2>Step 7: gofmt and go vet</h2>
 <p><code>gofmt</code> is the single canonical formatter: no config, no style debates, and <code>gofmt -l .</code> lists files that differ. <code>go vet</code> is a static checker for mistakes the compiler accepts. A program with a format-verb mismatch:</p>

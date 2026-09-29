@@ -1,5 +1,5 @@
 <h2>What you will build</h2>
-<p>The third policy, Thompson sampling, and a <strong>comparison harness</strong> that runs every policy across many seeds and turns the results into a table, a CSV file, and the regret chart below. A single seed is an anecdote; a hundred seeds with an error band is evidence, and this is where the simulator becomes an instrument you can trust for the rest of the course.</p>
+<p>The third policy, Thompson sampling, and a <strong>comparison harness</strong> that runs every policy across many seeds and turns the results into a table, a CSV file, and the regret chart below. One seed can mislead; a hundred seeds with an error band show whether a difference is real, and the rest of the course relies on that.</p>
 <!-- svg: ch04/regret-needle.svg caption="Cumulative regret on the needle scenario (nine arms at 0.10, one at 0.30), mean of 100 seeds. The chart is drawn by the code in this chapter from the harness's output." -->
 <p>Generics arrive along the way, because Thompson sampling and the harness both have small pieces that are the same for several types. Just as important is where they do <em>not</em> help, and the chapter marks both.</p>
 
@@ -26,7 +26,7 @@
 <p>The parameter sets include <code>(0.5, 0.5)</code> and <code>(1, 100)</code> on purpose: shapes below 1 exercise the boost branch, and a heavily skewed shape exercises the tail.</p>
 
 <h2>Step 2: your first generic function</h2>
-<p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code>, and it worked on <code>[]float64</code> only. It is now needed for several slices of floats, and it would be equally useful on counts or names. This is the textbook use of generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
+<p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code>, and it worked on <code>[]float64</code> only. It is now needed for several slices of floats, and it would be equally useful on counts or names. This is a straightforward case for generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
 <!-- include: ch04/bandit/argmax.go#Argmax -->
 <p>Reading the signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <code>cmp.Ordered</code> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits, so it can call <code>cmp.Compare</code>.</p>
 <p>At the call site you rarely write the type: <code>Argmax(p.means, p.rng)</code> works because the compiler <strong>infers</strong> <code>T = float64</code> from the argument. You can write <code>Argmax[int](counts, nil)</code> to be explicit. A slice of a type that is not ordered (<code>[]struct{}</code>, say) is rejected at compile time with a clear message, not at run time.</p>
@@ -34,13 +34,13 @@
 <!-- include: ch04/bandit/epsgreedy.go#EpsilonGreedy.Select diff -->
 <p>and UCB1 computes its scores into a reusable slice and hands them to the same helper:</p>
 <!-- include: ch04/bandit/ucb1.go#UCB1.Select diff -->
-<p>Passing <code>nil</code> for the generator selects "lowest index wins" and keeps UCB1 deterministic. It is a small compromise for a shared helper. If the two behaviours diverged further, two functions would be better than a flag-like nil.</p>
+<p>Passing <code>nil</code> for the generator selects "lowest index wins" and keeps UCB1 deterministic. Using nil to mean "lowest index" is a compromise; if the two behaviours diverged further, two functions would be clearer.</p>
 <!-- include: ch04/bandit/argmax_test.go#TestArgmax -->
 <p>The test calls the same function with floats, ints and strings, which is the point of the exercise.</p>
 
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
-  <p>A Python function taking a list already works on any element type that supports <code>&gt;</code>, checked at run time, and <code>TypeVar</code> annotations are advisory. Go generics are checked at compile time and the constraint documents exactly what the function needs. Underneath, Go does <em>not</em> box everything as an <code>object</code>; the compiler generates code that is specialised by the shape of the type arguments, so <code>Argmax</code> on <code>[]float64</code> is as fast as a hand-written loop. What Go deliberately does not have: generic <em>methods</em> (a method cannot introduce its own type parameters, only use those of its receiver type), operator overloading, or inheritance-style constraints. Constraints describe sets of types and operations, nothing more.</p>
+  <p>A Python function taking a list already works on any element type that supports <code>&gt;</code>, checked at run time, and <code>TypeVar</code> annotations are advisory. Go generics are checked at compile time and the constraint states what the function needs. Underneath, Go does <em>not</em> box everything as an <code>object</code>; the compiler generates code that is specialised by the shape of the type arguments, so <code>Argmax</code> on <code>[]float64</code> is as fast as a hand-written loop. What Go deliberately does not have: generic <em>methods</em> (a method cannot introduce its own type parameters, only use those of its receiver type), operator overloading, or inheritance-style constraints. Constraints describe sets of types and operations, nothing more.</p>
 </aside>
 
 <h2>Step 3: where generics do not help</h2>
@@ -52,7 +52,7 @@
 <h2>Step 4: a numeric helper package</h2>
 <p>The harness needs the mean and the standard error of a set of numbers, and later chapters will want them for integers (latencies, counts) as well as floats. That is a second natural home for generics, this time with a constraint we define ourselves:</p>
 <!-- include: ch04/stat/stat.go -->
-<p>The <code>Number</code> constraint is a <strong>type set</strong>: a union of types. The <code>~</code> means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation used, and it is legal because every member of the union is numeric. That is what the constraint buys: a proof, at compile time, that the body is valid for every type it may be called with.</p>
+<p>The <code>Number</code> constraint is a <strong>type set</strong>: a union of types. The <code>~</code> means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation used, and it is legal because every member of the union is numeric. The constraint guarantees at compile time that the body is valid for every type it may be called with.</p>
 <p><code>Sample[T any]</code> is the opposite extreme: no operations on the elements at all, only copying, so the constraint is <code>any</code>. Each of these has a table-driven test, including a named <code>reward</code> type to prove the tilde works:</p>
 <!-- include: ch04/stat/stat_test.go#reward,TestMean -->
 
@@ -62,7 +62,7 @@
 <p>Some design points:</p>
 <ul>
   <li><strong>The policies are strings.</strong> <code>Spec.Policies</code> holds the same spec strings the CLI accepts, and <code>runOnce</code> builds a fresh environment and policy for every seed through <code>bandit.NewPolicy</code>. A policy has state, so each run needs its own.</li>
-  <li><strong>Seeds are consecutive integers</strong> from <code>BaseSeed</code>, giving reproducibility for free: <code>Compare</code> with the same <code>Spec</code> always returns the same numbers, which a test pins down.</li>
+  <li><strong>Seeds are consecutive integers</strong> from <code>BaseSeed</code>, which makes runs reproducible: <code>Compare</code> with the same <code>Spec</code> always returns the same numbers, which a test pins down.</li>
   <li><strong>Errors carry context</strong> (which policy, which seed) with <code>%w</code>, as in the previous chapter.</li>
   <li><strong>It runs sequentially.</strong> Everything here is independent per (policy, seed), which is the ideal shape for parallel work. Chapter 5 uses this exact function as its first concurrency exercise.</li>
 </ul>
@@ -71,7 +71,7 @@
 <h2>Step 6: CSV and SVG output</h2>
 <p>Results should be usable outside Go. CSV is one <code>encoding/csv</code> writer:</p>
 <!-- include: ch04/harness/csv.go -->
-<p>The method takes an <code>io.Writer</code>, not a filename. A file, a <code>bytes.Buffer</code> in a test, an HTTP response body and <code>os.Stdout</code> are all writers, and this is the most useful small interface in the standard library. It uses the generic <code>stat.Sample</code> to thin 5,000 steps to 100 rows per policy, so the file is small enough to open anywhere:</p>
+<p>The method takes an <code>io.Writer</code>, not a filename. A file, a <code>bytes.Buffer</code> in a test, an HTTP response body and <code>os.Stdout</code> are all writers, and <code>io.Writer</code> is one of the most widely used interfaces in the standard library. It uses the generic <code>stat.Sample</code> to thin 5,000 steps to 100 rows per policy, so the file is small enough to open anywhere:</p>
 <!-- transcript: ch04/csv-head -->
 <p>The chart is generated the same way, as a text SVG written with <code>fmt.Fprintf</code> into a <code>strings.Builder</code>. Two details make it fit a documentation site. First, colours are CSS custom properties with fallbacks (<code>var(--series-1)</code>), so the page can restyle it for dark mode while the standalone file still looks right. Second, it carries a <code>&lt;title&gt;</code> and <code>&lt;desc&gt;</code> that state the final numbers in words for screen readers, and each line is labelled directly at its right end with a marker in its colour. Lines also differ by dash pattern, so identity never rests on colour alone.</p>
 <!-- include: ch04/harness/svg.go#niceTicks,formatTick -->
@@ -95,7 +95,7 @@
 <p>What to take from this, and what not to:</p>
 <ul>
   <li><strong>Thompson sampling has the lowest mean regret in all three scenarios</strong>, by a wide margin in <code>easy</code> and <code>needle</code>. Its curve visibly flattens, which is what logarithmic regret looks like on a linear axis.</li>
-  <li><strong>UCB1 is the worst of the four on <code>needle</code> and <code>close</code>.</strong> That is a property of the textbook √(2 ln <em>t</em> / <em>n</em>) bonus, which is large relative to the gaps in these scenarios: with ten arms, it keeps sampling all nine 0.10 arms until, roughly, the bonus falls below the 0.20 gap. Tuned or variance-aware UCB variants do much better; this is plain UCB1.</li>
+  <li><strong>UCB1 is the worst of the four on <code>needle</code> and <code>close</code>.</strong> That comes from the standard √(2 ln <em>t</em> / <em>n</em>) bonus, which is large relative to the gaps in these scenarios: with ten arms, it keeps sampling all nine 0.10 arms until, roughly, the bonus falls below the 0.20 gap. Tuned or variance-aware UCB variants do much better; this is plain UCB1.</li>
   <li><strong>Epsilon-greedy's result depends heavily on ε</strong>, and the error bars tell you why. At ε = 0.01 the standard error is large (38.6 on <code>needle</code>, 18.8 on <code>easy</code>): some seeds lock onto a good arm early and pay almost nothing, others lock onto a bad arm and stay wrong for thousands of steps. On <code>easy</code> its <em>mean</em> beats ε = 0.1, but a policy whose outcome is a coin flip is not what you want in production. A single seed can't show this at all.</li>
   <li><strong>These are three fixed scenarios and one horizon.</strong> Nothing here says Thompson is always better; with delayed or batched feedback, which the serving chapters introduce, the ranking can change, and chapter 12 measures exactly that.</li>
 </ul>

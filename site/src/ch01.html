@@ -51,7 +51,7 @@
 </ul>
 <p>The rest of the environment answers "which arm is actually best?", which the simulation needs in order to measure regret:</p>
 <!-- include: ch01/bandit/env.go#Env.Best -->
-<p><code>Best</code> returns two values. The <em>named results</em> <code>arm</code> and <code>p</code> are declared as variables at the top of the function and start at their <strong>zero values</strong>, <code>0</code> and <code>0.0</code>. That is what makes the loop work: the <code>i == 0</code> check seeds them with the first arm, and an environment with no arms returns <code>(0, 0)</code> without any special case. (Chapter 3 makes that impossible by rejecting empty environments.)</p>
+<p><code>Best</code> returns two values. The <em>named results</em> <code>arm</code> and <code>p</code> are declared as variables at the top of the function and start at their <strong>zero values</strong>, <code>0</code> and <code>0.0</code>. The loop relies on this: the <code>i == 0</code> check seeds them with the first arm, and an environment with no arms returns <code>(0, 0)</code> without any special case. (Chapter 3 makes that impossible by rejecting empty environments.)</p>
 
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
@@ -79,7 +79,7 @@
 <p><code>Epsilon</code> is capitalised, so callers can read and change it; <code>counts</code>, <code>values</code> and <code>rng</code> are private to the package. <code>make([]int, nArms)</code> allocates a slice of that length filled with zeros, which is exactly the initial state we want.</p>
 <p>Selecting an arm is a coin flip between exploring and exploiting:</p>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Select,EpsilonGreedy.greedy -->
-<p><code>greedy</code> is unexported, so it is an implementation detail of this package. It also contains a subtle point: at the start every mean is 0, so every arm ties. Picking "the first maximum" would always pull arm 0 first and bias the whole run, so ties are broken uniformly at random using <em>reservoir sampling</em>: when the <em>n</em>-th tied arm is seen, it replaces the current choice with probability 1/<em>n</em>, which leaves every tied arm equally likely without collecting them in a slice. The <code>switch</code> with no expression is Go's tidy replacement for an <code>if</code>/<code>else if</code> chain; each <code>case</code> is a condition, and there is no fall-through.</p>
+<p><code>greedy</code> is unexported, so it is an implementation detail of this package. It also contains a subtle point: at the start every mean is 0, so every arm ties. Picking "the first maximum" would always pull arm 0 first and bias the whole run, so ties are broken uniformly at random using <em>reservoir sampling</em>: when the <em>n</em>-th tied arm is seen, it replaces the current choice with probability 1/<em>n</em>, which leaves every tied arm equally likely without collecting them in a slice. The <code>switch</code> with no expression is Go's replacement for an <code>if</code>/<code>else if</code> chain; each <code>case</code> is a condition, and there is no fall-through.</p>
 <p>Learning is a one-line running-mean update:</p>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Update -->
 <p>The identity is <em>mean += (reward − mean) / n</em>. It avoids storing every reward or a separate sum, and never divides by zero because the count is incremented first.</p>
@@ -93,10 +93,10 @@
 <h2>Step 7: the command-line program</h2>
 <p><code>main.go</code> is the only file in <code>package main</code>. It parses flags, builds the pieces, runs the simulation, and prints:</p>
 <!-- include: ch01/main.go -->
-<p>Details worth noting: <code>flag.String</code> and friends return <em>pointers</em> that are filled in by <code>flag.Parse()</code>, which is why the code dereferences them with <code>*scenario</code>. Writing errors to <code>os.Stderr</code> and exiting with a non-zero code is how a Go program reports failure. And <code>for n := 10; n &lt;= res.Steps; n *= 10</code> is the classic three-part <code>for</code>; Go has only one looping keyword, and this is its C-style form.</p>
+<p>Details worth noting: <code>flag.String</code> and friends return <em>pointers</em> that are filled in by <code>flag.Parse()</code>, which is why the code dereferences them with <code>*scenario</code>. Writing errors to <code>os.Stderr</code> and exiting with a non-zero code is how a Go program reports failure. And <code>for n := 10; n &lt;= res.Steps; n *= 10</code> is the C-style three-part <code>for</code>. Go has only one looping keyword, and this is one of its forms.</p>
 <p>Run it:</p>
 <!-- transcript: ch01/run -->
-<p>Out of 10,000 pulls, arm 2 (the 0.8 arm) got 9,331; the rest went to exploring. Cumulative regret is about 304, and almost all of it is the price of exploring: exploring uniformly one time in ten across three arms wastes about 0.1 × (0.6 + 0.3) / 3 = 0.03 regret per pull, or 300 over the run. That is the price of a fixed ε, and one of the reasons the more sophisticated policies in later chapters exist.</p>
+<p>Out of 10,000 pulls, arm 2 (the 0.8 arm) got 9,331; the rest went to exploring. Cumulative regret is about 304, and almost all of it is the price of exploring: exploring uniformly one time in ten across three arms wastes about 0.1 × (0.6 + 0.3) / 3 = 0.03 regret per pull, or 300 over the run. A fixed ε pays this cost for the whole run, however much the policy has already learned; the policies in later chapters explore less as evidence builds.</p>
 <p>Because generators are seeded, this output is identical on every machine. Change the scenario, ε, or step count to see how the numbers move:</p>
 <!-- transcript: ch01/run-variants -->
 <p>On <code>needle</code> with a smaller ε, 95,310 of 100,000 pulls go to the good arm, but regret still reaches 938: with only 0.05 of exploration spread across ten arms, roughly nine in ten of those exploratory pulls go to a 0.10 arm that is 0.20 worse.</p>
@@ -123,7 +123,7 @@
     <p>Implement <code>EmpiricalRates(wins, losses []int) ([]float64, bool)</code> in <code>exercises/ch01/ex1</code>. It returns each arm's success rate; an arm that was never pulled has rate 0, not NaN. If the two slices differ in length, return <code>nil, false</code>.</p>
     <details class="answer"><summary>Reference answer</summary>
 <!-- include: exercises/ch01/ex1/reference/rates.go#EmpiricalRates -->
-    <p>Checking <code>n &gt; 0</code> before dividing is what prevents NaN. Note that <code>rates</code> starts out zeroed, so the never-pulled case needs no code at all: not assigning is the answer.</p>
+    <p>Checking <code>n &gt; 0</code> before dividing is what prevents NaN. <code>rates</code> starts out zeroed, so the never-pulled case needs no code at all: not assigning is the answer.</p>
     </details>
   </div>
 </details>

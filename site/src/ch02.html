@@ -19,7 +19,7 @@
 
 <aside class="callout why">
   <p class="callout-title">Why Go does it this way</p>
-  <p>In Python you get this with duck typing (checked at runtime, if at all) or <code>typing.Protocol</code> (checked by an external tool). Java-style nominal interfaces check at compile time but force the implementer to name the interface, so the interface has to exist before the implementation. Go's structural interfaces are checked by the compiler <em>and</em> defined by the consumer. The idiom that follows is to declare small interfaces next to the code that uses them: <code>Policy</code> lives in the package that runs simulations because that is the code that needs one. The standard library's <code>io.Reader</code>, one method long, is the model.</p>
+  <p>In Python you get this with duck typing (checked at runtime, if at all) or <code>typing.Protocol</code> (checked by an external tool). Java-style nominal interfaces check at compile time but force the implementer to name the interface, so the interface has to exist before the implementation. Go's structural interfaces are checked by the compiler <em>and</em> defined by the consumer. So Go code declares small interfaces next to the code that uses them: <code>Policy</code> lives in the package that runs simulations because that is the code that needs one. The standard library's <code>io.Reader</code>, one method long, is the model.</p>
 </aside>
 
 <h2>Step 2: share bookkeeping with embedding</h2>
@@ -27,7 +27,7 @@
 <!-- include: ch02/bandit/stats.go diff -->
 <p>Now <code>EpsilonGreedy</code> <strong>embeds</strong> it: a field with a type but no name.</p>
 <!-- include: ch02/bandit/epsgreedy.go#EpsilonGreedy,NewEpsilonGreedy,EpsilonGreedy.Name diff -->
-<p>Embedding promotes the embedded type's fields and methods, so <code>p.means</code>, <code>p.counts</code>, and <code>p.Update(arm, r)</code> all work directly on an <code>EpsilonGreedy</code>. The policy no longer defines <code>Update</code> itself; it inherits the method from <code>armStats</code>. This is the whole story for the <code>Update</code> half of the <code>Policy</code> interface.</p>
+<p>Embedding promotes the embedded type's fields and methods, so <code>p.means</code>, <code>p.counts</code>, and <code>p.Update(arm, r)</code> all work directly on an <code>EpsilonGreedy</code>. The policy no longer defines <code>Update</code> itself; it inherits the method from <code>armStats</code>.</p>
 <p>It looks like inheritance, but it is composition: <code>armStats</code> is an ordinary field (it even has a name, <code>armStats</code>, that you can use to reach it), and the promoted method runs with <code>armStats</code> as its receiver. It cannot see the outer type, and there is no <code>super</code> and no virtual dispatch back into the outer type. If you need to override, you define a method with the same name on the outer type, as exercise 2 does.</p>
 <p>The type <code>armStats</code> starts with a lowercase letter, so it is invisible outside the package, but its <em>exported</em> method <code>Update</code> is still promoted onto the exported <code>EpsilonGreedy</code> and counts towards satisfying <code>Policy</code>.</p>
 
@@ -54,19 +54,19 @@
 <p><em>score(a) = mean(a) + √(2 · ln t / n(a))</em></p>
 <p>where <em>t</em> is the total number of pulls and <em>n(a)</em> is how often arm <em>a</em> was pulled. The square-root term is a bonus that is large for an arm that has been tried rarely and shrinks as evidence accumulates. Arms that might be better than they look get pulled; arms that are clearly worse stop being pulled, with no random exploration at all.</p>
 <!-- include: ch02/bandit/ucb1.go -->
-<p>UCB1 embeds the same <code>armStats</code>, so it gets <code>Update</code> for free and only has to provide <code>Name</code> and <code>Select</code>. Nothing else in the codebase had to learn that UCB1 exists.</p>
+<p>UCB1 embeds the same <code>armStats</code>, so it gets <code>Update</code> by embedding and only has to provide <code>Name</code> and <code>Select</code>. Nothing else in the codebase had to learn that UCB1 exists.</p>
 
 <h2>Step 5: the runner accepts an interface</h2>
 <p>The change to the simulation is one word:</p>
 <!-- include: ch02/bandit/sim.go#Result,Run diff -->
-<p><code>pol</code> is now a <code>Policy</code>, and the runner records <code>pol.Name()</code> in the result. An interface value is a pair (concrete type, pointer to the value), and calling <code>pol.Select()</code> looks the method up dynamically. That is the cost of the abstraction: a method call through an interface is an indirect call that the compiler usually cannot inline. It is small, but not zero.</p>
+<p><code>pol</code> is now a <code>Policy</code>, and the runner records <code>pol.Name()</code> in the result. An interface value is a pair (concrete type, pointer to the value), and calling <code>pol.Select()</code> looks the method up dynamically. This has a cost: a method call through an interface is an indirect call that the compiler usually cannot inline. It is small, but not zero.</p>
 <p>The guideline this illustrates is <strong>accept interfaces, return structs</strong>: <code>Run</code> takes the narrowest interface that describes what it needs, while <code>NewEpsilonGreedy</code> returns the concrete <code>*EpsilonGreedy</code>. Callers keep access to fields such as <code>Epsilon</code>, and a new method added later is not a breaking change to an interface anyone else implements.</p>
-<p>Because satisfaction is implicit, a typo in a method name would only show up when you try to <em>use</em> the type as a <code>Policy</code>, possibly far from where you wrote it. The idiom for catching it at the definition is a compile-time assertion:</p>
+<p>Because satisfaction is implicit, a typo in a method name would only show up when you try to <em>use</em> the type as a <code>Policy</code>, possibly far from where you wrote it. A compile-time assertion catches it at the definition:</p>
 <!-- include: ch02/bandit/policy_test.go -->
 <p>The blank identifier <code>_</code> discards the value, so the line costs nothing at runtime, but it will not compile unless <code>*UCB1</code> has every method of <code>Policy</code>.</p>
 
 <h2>Step 6: choosing policies by name</h2>
-<p><code>main</code> should be able to build a policy from a string. That is the job of a small factory, and this is the idiom for it in Go:</p>
+<p><code>main</code> should be able to build a policy from a string. A small factory function does that:</p>
 <!-- include: ch02/bandit/policy.go#PolicyNames,NewPolicy diff -->
 <p>The function returns the interface type, so callers get a <code>Policy</code> whichever branch ran. One trap to know about: never return a typed nil pointer such as <code>(*UCB1)(nil)</code> as a <code>Policy</code>. An interface value holding a nil pointer is <em>not</em> equal to <code>nil</code>, so the caller's <code>if pol == nil</code> check would pass and the first method call would panic. Return a literal <code>nil</code> on failure, as the code does. Chapter 3 shows the trap firing. The error return is new; chapter 3 covers Go's error handling properly.</p>
 <p>The command-line program now accepts a comma-separated list, gives every policy its own identically seeded environment, and prints one row each:</p>
@@ -74,7 +74,7 @@
 <!-- transcript: ch02/run -->
 <p>Same environment, same seed. Epsilon-greedy's regret is 304 (almost all of it the fixed cost of exploring 10% of the time, as chapter 1 computed), while UCB1 gets to 71 because its exploration fades as its estimates firm up. On a harder problem with eight arms, UCB1 alone:</p>
 <!-- transcript: ch02/run-one -->
-<p>It concentrates 18,452 of 20,000 pulls on the best arm but keeps sampling the runners-up (735 and 411 pulls), which is exactly what a confidence bound should do when the second-best arm is only 0.10 worse.</p>
+<p>It concentrates 18,452 of 20,000 pulls on the best arm but keeps sampling the runners-up (735 and 411 pulls), as a confidence bound should when the second-best arm is only 0.10 worse.</p>
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
@@ -103,7 +103,7 @@
     <p>In <code>exercises/ch02/ex2</code>, <code>Logged</code> embeds a <code>Policy</code>. Make it record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines to its <code>Log</code> while still delegating to the wrapped policy. You should not need to write <code>Name</code>.</p>
     <details class="answer"><summary>Reference answer</summary>
 <!-- include: exercises/ch02/ex2/reference/logged.go#Logged,Logged.Select,Logged.Update -->
-    <p>Defining <code>Select</code> and <code>Update</code> on <code>*Logged</code> shadows the promoted ones; the embedded policy is still reachable as <code>l.Policy</code>. <code>Name</code> is promoted unchanged. This is the decorator pattern with no boilerplate, and the same shape as an HTTP middleware, which chapter 8 uses.</p>
+    <p>Defining <code>Select</code> and <code>Update</code> on <code>*Logged</code> shadows the promoted ones; the embedded policy is still reachable as <code>l.Policy</code>. <code>Name</code> is promoted unchanged. This is the decorator pattern. HTTP middleware in chapter 8 has the same shape.</p>
     </details>
   </div>
 </details>
