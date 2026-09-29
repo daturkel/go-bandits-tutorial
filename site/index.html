@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go Bandits</title>
+<meta name="description" content="Learn Go by building a multi-armed bandit service, from a CLI simulation to replicated microservices.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23131416'/%3E%3Crect x='6' y='16' width='5' height='10' rx='1.5' fill='%23a6a49b'/%3E%3Crect x='13.5' y='8' width='5' height='18' rx='1.5' fill='%23fbbf24'/%3E%3Crect x='21' y='13' width='5' height='13' rx='1.5' fill='%23a6a49b'/%3E%3C/svg%3E">
+<script>
+try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="index.html" aria-label="Go Bandits, home">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="16" width="6" height="11" rx="1.5"/><rect class="best" x="13" y="6" width="6" height="21" rx="1.5"/><rect x="21" y="12" width="6" height="15" rx="1.5"/></svg>
+    <span>Go Bandits</span>
+  </a>
+  <nav class="top-nav" aria-label="Site">
+    <details class="menu">
+      <summary>Chapters</summary>
+      <ol>
+      <li class="soon"><span class="n">01</span> Modules, packages, first simulation <em>planned</em></li><li class="soon"><span class="n">02</span> Interfaces and methods <em>planned</em></li><li class="soon"><span class="n">03</span> Errors, tests, benchmarks <em>planned</em></li><li class="soon"><span class="n">04</span> Generics and the comparison harness <em>planned</em></li><li class="soon"><span class="n">05</span> Goroutines and channels <em>planned</em></li><li class="soon"><span class="n">06</span> Shared state <em>planned</em></li><li class="soon"><span class="n">07</span> Context, select, worker pools <em>planned</em></li><li class="soon"><span class="n">08</span> net/http <em>planned</em></li><li class="soon"><span class="n">09</span> Structure and operations <em>planned</em></li><li class="soon"><span class="n">10</span> Persistence and delayed feedback <em>planned</em></li><li class="soon"><span class="n">11</span> Observability and performance <em>planned</em></li><li class="soon"><span class="n">12</span> Why naive replicas break the bandit <em>planned</em></li><li class="soon"><span class="n">13</span> Splitting into services <em>planned</em></li><li class="soon"><span class="n">14</span> Running the system <em>planned</em></li><li class="soon"><span class="n">★</span> End-to-end load test <em>planned</em></li>
+      </ol>
+    </details>
+    <button type="button" id="theme-toggle" class="icon-btn" aria-label="Switch colour theme" title="Switch colour theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="sun" d="M12 4V2m0 20v-2M4 12H2m20 0h-2M6.3 6.3 4.9 4.9m14.2 14.2-1.4-1.4M6.3 17.7l-1.4 1.4m14.2-14.2-1.4 1.4M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"/><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+  </nav>
+</header>
+<div class="wrap wrap-index">
+<main id="main">
+
+<article class="prose">
+<section class="index-hero">
+  <p class="kicker"><span class="reel" aria-hidden="true">Go</span> A hands-on course</p>
+  <h1>Learn Go by building a <em>bandit</em> service</h1>
+  <p class="lede">One project, fourteen chapters. It starts as a command-line simulation of a multi-armed bandit and grows into replicated gRPC microservices, picking up the language and the backend patterns exactly when the project needs them.</p>
+</section>
+
+<h2 id="how-the-course-works">How the course works</h2>
+<p>A multi-armed bandit repeatedly chooses one of several options (an ad, a model variant, a ranking), observes a reward, and has to balance trying things it is unsure about against repeating what already works. That decision loop is small enough to fit in a few hundred lines and rich enough to need everything a Go backend uses: interfaces, testing, concurrency, HTTP, persistence, metrics, and finally state that has to stay consistent across replicas.</p>
+<ul>
+  <li><strong>Every listing is real.</strong> Code on these pages is pulled from <code>solutions/chNN</code>, which compiles and passes <code>go test -race</code>. Terminal output comes from running it, with fixed seeds.</li>
+  <li><strong>Each chapter is a complete snapshot.</strong> <code>cd solutions/ch05 &amp;&amp; go test -race ./...</code> works without anything else. Lines a chapter adds are marked in the margin of its listings.</li>
+  <li><strong>Exercises have tests.</strong> Each chapter ships starters in <code>exercises/chNN</code> that fail until you implement them; reference answers sit under a fold on the page.</li>
+</ul>
+<p>You need Go 1.24 or newer. Start with Chapter 1 (not published yet), or read <a href="../README.md">the README</a> for how to run any chapter.</p>
+
+<section class="part">
+<h2 id="part-i-language-core">Part I: Language core</h2>
+<ol class="chapter-list">
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">01</span><span class="card-body"><span class="card-title">Modules, packages, first simulation</span><span class="card-sum">Set up a Go module and write an epsilon-greedy bandit simulation that prints its regret.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">02</span><span class="card-body"><span class="card-title">Interfaces and methods</span><span class="card-sum">Introduce the Policy interface, add UCB1, and swap policies without touching the runner.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">03</span><span class="card-body"><span class="card-title">Errors, tests, benchmarks</span><span class="card-sum">Make failure explicit with error values, then pin behaviour down with table-driven tests, golden files and benchmarks.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">04</span><span class="card-body"><span class="card-title">Generics and the comparison harness</span><span class="card-sum">Add Thompson sampling, write generic helpers where they earn their place, and chart regret across many seeds.</span></span><span class="badge">Planned</span></div></li>
+</ol>
+</section>
+<section class="part">
+<h2 id="part-ii-concurrency">Part II: Concurrency</h2>
+<ol class="chapter-list">
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">05</span><span class="card-body"><span class="card-title">Goroutines and channels</span><span class="card-sum">Run simulations in parallel with fan-out and fan-in.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">06</span><span class="card-body"><span class="card-title">Shared state</span><span class="card-sum">Mutexes, atomics and the race detector: see a real race, then fix it.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">07</span><span class="card-body"><span class="card-title">Context, select, worker pools</span><span class="card-sum">Cancellation, timeouts and bounded worker pools without goroutine leaks.</span></span><span class="badge">Planned</span></div></li>
+</ol>
+</section>
+<section class="part">
+<h2 id="part-iii-serving">Part III: Serving</h2>
+<ol class="chapter-list">
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">08</span><span class="card-body"><span class="card-title">net/http</span><span class="card-sum">Serve select and reward endpoints with JSON, middleware and httptest.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">09</span><span class="card-body"><span class="card-title">Structure and operations</span><span class="card-sum">Project layout, configuration, structured logging and graceful shutdown.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">10</span><span class="card-body"><span class="card-title">Persistence and delayed feedback</span><span class="card-sum">Store bandit state and pending selections; handle rewards that arrive late or never.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">11</span><span class="card-body"><span class="card-title">Observability and performance</span><span class="card-sum">Prometheus metrics, pprof, a load generator and one real bottleneck.</span></span><span class="badge">Planned</span></div></li>
+</ol>
+</section>
+<section class="part">
+<h2 id="part-iv-distributed">Part IV: Distributed</h2>
+<ol class="chapter-list">
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">12</span><span class="card-body"><span class="card-title">Why naive replicas break the bandit</span><span class="card-sum">Watch replicas diverge, then fix it with mergeable counts and measure the cost of staleness.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">13</span><span class="card-body"><span class="card-title">Splitting into services</span><span class="card-sum">Protobuf and gRPC: a policy service, feedback ingest and an aggregator.</span></span><span class="badge">Planned</span></div></li>
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">14</span><span class="card-body"><span class="card-title">Running the system</span><span class="card-sum">Docker, Compose, load balancing, and a Python client for the Go service.</span></span><span class="badge">Planned</span></div></li>
+</ol>
+</section>
+<section class="part">
+<h2 id="capstone">Capstone</h2>
+<ol class="chapter-list">
+<li class="chapter-card planned"><div class="planned-card"><span class="reel" aria-hidden="true">★</span><span class="card-body"><span class="card-title">End-to-end load test</span><span class="card-sum">Compare policies across replicas with staleness, and decide where to go next.</span></span><span class="badge">Planned</span></div></li>
+</ol>
+</section>
+
+
+</article>
+
+</main>
+
+</div>
+<footer class="foot">
+  <p>Every code listing on this site is pulled from the compiled, tested sources in <code>solutions/</code>; terminal output comes from running them.</p>
+</footer>
+<script src="site.js" defer></script>
+</body>
+</html>

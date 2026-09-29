@@ -1,0 +1,17 @@
+[
+  {"id":"ch01","label":"Chapter 1","part":"Part I: Language core","title":"Modules, packages, first simulation","summary":"Set up a Go module and write an epsilon-greedy bandit simulation that prints its regret.","status":"planned"},
+  {"id":"ch02","label":"Chapter 2","part":"Part I: Language core","title":"Interfaces and methods","summary":"Introduce the Policy interface, add UCB1, and swap policies without touching the runner.","status":"planned"},
+  {"id":"ch03","label":"Chapter 3","part":"Part I: Language core","title":"Errors, tests, benchmarks","summary":"Make failure explicit with error values, then pin behaviour down with table-driven tests, golden files and benchmarks.","status":"planned"},
+  {"id":"ch04","label":"Chapter 4","part":"Part I: Language core","title":"Generics and the comparison harness","summary":"Add Thompson sampling, write generic helpers where they earn their place, and chart regret across many seeds.","status":"planned"},
+  {"id":"ch05","label":"Chapter 5","part":"Part II: Concurrency","title":"Goroutines and channels","summary":"Run simulations in parallel with fan-out and fan-in.","status":"planned"},
+  {"id":"ch06","label":"Chapter 6","part":"Part II: Concurrency","title":"Shared state","summary":"Mutexes, atomics and the race detector: see a real race, then fix it.","status":"planned"},
+  {"id":"ch07","label":"Chapter 7","part":"Part II: Concurrency","title":"Context, select, worker pools","summary":"Cancellation, timeouts and bounded worker pools without goroutine leaks.","status":"planned"},
+  {"id":"ch08","label":"Chapter 8","part":"Part III: Serving","title":"net/http","summary":"Serve select and reward endpoints with JSON, middleware and httptest.","status":"planned"},
+  {"id":"ch09","label":"Chapter 9","part":"Part III: Serving","title":"Structure and operations","summary":"Project layout, configuration, structured logging and graceful shutdown.","status":"planned"},
+  {"id":"ch10","label":"Chapter 10","part":"Part III: Serving","title":"Persistence and delayed feedback","summary":"Store bandit state and pending selections; handle rewards that arrive late or never.","status":"planned"},
+  {"id":"ch11","label":"Chapter 11","part":"Part III: Serving","title":"Observability and performance","summary":"Prometheus metrics, pprof, a load generator and one real bottleneck.","status":"planned"},
+  {"id":"ch12","label":"Chapter 12","part":"Part IV: Distributed","title":"Why naive replicas break the bandit","summary":"Watch replicas diverge, then fix it with mergeable counts and measure the cost of staleness.","status":"planned"},
+  {"id":"ch13","label":"Chapter 13","part":"Part IV: Distributed","title":"Splitting into services","summary":"Protobuf and gRPC: a policy service, feedback ingest and an aggregator.","status":"planned"},
+  {"id":"ch14","label":"Chapter 14","part":"Part IV: Distributed","title":"Running the system","summary":"Docker, Compose, load balancing, and a Python client for the Go service.","status":"planned"},
+  {"id":"capstone","label":"Capstone","part":"Capstone","title":"End-to-end load test","summary":"Compare policies across replicas with staleness, and decide where to go next.","status":"planned"}
+]

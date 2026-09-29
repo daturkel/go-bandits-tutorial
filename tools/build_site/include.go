@@ -1,0 +1,434 @@
+package main
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"html"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// A marker looks like
+//
+//	<!-- include: ch02/bandit/policy.go#Policy,NewPolicy title="policy.go" hl=3-5 diff -->
+//
+// The fragment after # selects declarations (Name or Type.Method) or a
+// `region: Name` ... `endregion: Name` block. lines=a-b selects raw lines.
+var markerRE = regexp.MustCompile(`<!--\s*(include|transcript|svg):\s*(.*?)\s*-->`)
+
+type builder struct {
+	root     string // repository root
+	chapters []Chapter
+}
+
+type codeLine struct {
+	n     int
+	html  string
+	added bool
+}
+
+func (b *builder) expand(page string, chapterID string) (string, error) {
+	var firstErr error
+	out := markerRE.ReplaceAllStringFunc(page, func(m string) string {
+		sub := markerRE.FindStringSubmatch(m)
+		var res string
+		var err error
+		switch sub[1] {
+		case "include":
+			res, err = b.renderInclude(sub[2])
+		case "transcript":
+			res, err = b.renderTranscript(sub[2])
+		case "svg":
+			res, err = b.renderSVG(sub[2])
+		}
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s: %w", strings.TrimSpace(m), err)
+			}
+			return ""
+		}
+		return res
+	})
+	return out, firstErr
+}
+
+// parseArgs splits `target key=value "quoted value" flag` into a target and options.
+func parseArgs(s string) (target string, opts map[string]string, err error) {
+	opts = map[string]string{}
+	var fields []string
+	var cur strings.Builder
+	inQ := false
+	for _, r := range s {
+		switch {
+		case r == '"':
+			inQ = !inQ
+			cur.WriteRune(r)
+		case r == ' ' && !inQ:
+			if cur.Len() > 0 {
+				fields = append(fields, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		fields = append(fields, cur.String())
+	}
+	if len(fields) == 0 {
+		return "", nil, fmt.Errorf("empty marker")
+	}
+	target = fields[0]
+	for _, f := range fields[1:] {
+		k, v, _ := strings.Cut(f, "=")
+		opts[k] = strings.Trim(v, `"`)
+	}
+	return target, opts, nil
+}
+
+func (b *builder) renderInclude(spec string) (string, error) {
+	target, opts, err := parseArgs(spec)
+	if err != nil {
+		return "", err
+	}
+	file, frag, _ := strings.Cut(target, "#")
+	// Paths under exercises/ are relative to the repository root; everything
+	// else is relative to solutions/.
+	isExercise := strings.HasPrefix(file, "exercises/")
+	base := filepath.Join(b.root, "solutions")
+	if isExercise {
+		base = b.root
+	}
+	full := filepath.Join(base, filepath.FromSlash(file))
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	src := string(data)
+	lines := strings.Split(strings.TrimSuffix(src, "\n"), "\n")
+
+	// Which lines are new compared with the previous chapter's copy of this file?
+	added := make([]bool, len(lines))
+	newFile := false
+	if _, ok := opts["diff"]; ok && !isExercise {
+		chDir, rel, _ := strings.Cut(file, "/")
+		if prev := previousChapter(chDir); prev != "" {
+			prevData, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(rel)))
+			if perr == nil {
+				added = addedLines(strings.Split(strings.TrimSuffix(string(prevData), "\n"), "\n"), lines)
+			} else {
+				newFile = true
+			}
+		}
+	}
+
+	// Pick the line ranges to show.
+	type rng struct{ from, to int } // 1-based inclusive
+	var ranges []rng
+	switch {
+	case opts["lines"] != "":
+		from, to, err := parseRange(opts["lines"])
+		if err != nil {
+			return "", err
+		}
+		ranges = append(ranges, rng{from, min(to, len(lines))})
+	case frag == "":
+		ranges = append(ranges, rng{1, len(lines)})
+	default:
+		for _, name := range strings.Split(frag, ",") {
+			from, to, err := findFragment(file, src, lines, name)
+			if err != nil {
+				return "", err
+			}
+			ranges = append(ranges, rng{from, to})
+		}
+	}
+
+	hl := map[int]bool{} // 1-based snippet line numbers to highlight (explicit hl=)
+	if v := opts["hl"]; v != "" {
+		for _, part := range strings.Split(v, ",") {
+			from, to, err := parseRange(part)
+			if err != nil {
+				return "", err
+			}
+			for i := from; i <= to; i++ {
+				hl[i] = true
+			}
+		}
+	}
+
+	var highlighted []string
+	if strings.HasSuffix(file, ".go") {
+		highlighted = splitLines(highlightGo(src))
+	} else {
+		highlighted = splitLines(highlightPlain(src))
+	}
+
+	var shown []codeLine
+	for ri, r := range ranges {
+		if ri > 0 {
+			shown = append(shown, codeLine{n: 0, html: ""})
+		}
+		for n := r.from; n <= r.to; n++ {
+			shown = append(shown, codeLine{n: n, html: highlighted[n-1], added: added[n-1]})
+		}
+	}
+	shown = trimIndent(shown, lines)
+
+	name := opts["title"]
+	if name == "" {
+		_, rel, _ := strings.Cut(file, "/")
+		name = rel
+		if isExercise { // exercises/chNN/exM/... -> exM/...
+			parts := strings.SplitN(file, "/", 3)
+			name = parts[2]
+		}
+	}
+	meta := ""
+	switch {
+	case newFile:
+		meta = "new file"
+	case frag != "" || opts["lines"] != "":
+		meta = "excerpt"
+	}
+	if _, ok := opts["diff"]; ok && !newFile {
+		anyAdded := false
+		for _, l := range shown {
+			anyAdded = anyAdded || l.added
+		}
+		if anyAdded {
+			if meta != "" {
+				meta += " · "
+			}
+			meta += "highlighted lines are new in this chapter"
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(`<figure class="code">` + "\n")
+	sb.WriteString(`<figcaption><span class="fname">` + html.EscapeString(name) + `</span>`)
+	if meta != "" {
+		sb.WriteString(`<span class="fmeta">` + html.EscapeString(meta) + `</span>`)
+	}
+	srcHref := "../solutions/" + file
+	if isExercise {
+		srcHref = "../" + file
+	}
+	sb.WriteString(`<a class="fsrc" href="` + html.EscapeString(srcHref) + `">full file</a>`)
+	sb.WriteString(`<button type="button" class="copy" aria-label="Copy code">Copy</button></figcaption>` + "\n")
+	sb.WriteString(`<pre tabindex="0"><code>`)
+	for i, l := range shown {
+		cls := "ln"
+		if l.added || hl[i+1] {
+			cls += " add"
+		}
+		if l.n == 0 {
+			sb.WriteString(`<span class="ln gap" data-n="⋮"></span>`)
+			continue
+		}
+		fmt.Fprintf(&sb, `<span class="%s" data-n="%d">%s</span>`, cls, l.n, l.html)
+	}
+	sb.WriteString("</code></pre>\n</figure>")
+	return sb.String(), nil
+}
+
+// trimIndent is a hook for future dedenting of excerpts; lines are kept as-is
+// so the shown text is byte-for-byte the source.
+func trimIndent(shown []codeLine, _ []string) []codeLine { return shown }
+
+func parseRange(s string) (from, to int, err error) {
+	a, bStr, ok := strings.Cut(s, "-")
+	if from, err = strconv.Atoi(a); err != nil {
+		return 0, 0, fmt.Errorf("bad range %q", s)
+	}
+	if !ok {
+		return from, from, nil
+	}
+	if to, err = strconv.Atoi(bStr); err != nil {
+		return 0, 0, fmt.Errorf("bad range %q", s)
+	}
+	return from, to, nil
+}
+
+var chRE = regexp.MustCompile(`^ch(\d+)$`)
+
+func previousChapter(id string) string {
+	m := chRE.FindStringSubmatch(id)
+	if m == nil {
+		return ""
+	}
+	n, _ := strconv.Atoi(m[1])
+	if n <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("ch%02d", n-1)
+}
+
+// findFragment locates a region marker or a Go declaration and returns its
+// 1-based inclusive line range.
+func findFragment(file, src string, lines []string, name string) (int, int, error) {
+	start := -1
+	for i, l := range lines {
+		if strings.Contains(l, "region: "+name) && !strings.Contains(l, "endregion") {
+			start = i + 1
+		}
+		if start > 0 && strings.Contains(l, "endregion: "+name) {
+			return start + 1, i, nil
+		}
+	}
+	if !strings.HasSuffix(file, ".go") {
+		return 0, 0, fmt.Errorf("no region %q in %s", name, file)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, file, src, parser.ParseComments)
+	if err != nil {
+		return 0, 0, err
+	}
+	recv, member, isMethod := strings.Cut(name, ".")
+	for _, d := range f.Decls {
+		var doc *ast.CommentGroup
+		match := false
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			doc = d.Doc
+			if isMethod {
+				match = d.Recv != nil && d.Name.Name == member && recvName(d.Recv) == recv
+			} else {
+				match = d.Recv == nil && d.Name.Name == name
+			}
+		case *ast.GenDecl:
+			doc = d.Doc
+			if !isMethod {
+				for _, sp := range d.Specs {
+					switch sp := sp.(type) {
+					case *ast.TypeSpec:
+						match = match || sp.Name.Name == name
+					case *ast.ValueSpec:
+						for _, n := range sp.Names {
+							match = match || n.Name == name
+						}
+					}
+				}
+			}
+		}
+		if match {
+			from := d.Pos()
+			if doc != nil {
+				from = doc.Pos()
+			}
+			return fset.Position(from).Line, fset.Position(d.End()).Line, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("no declaration or region %q in %s", name, file)
+}
+
+func recvName(fl *ast.FieldList) string {
+	if len(fl.List) == 0 {
+		return ""
+	}
+	t := fl.List[0].Type
+	if s, ok := t.(*ast.StarExpr); ok {
+		t = s.X
+	}
+	if ix, ok := t.(*ast.IndexExpr); ok {
+		t = ix.X
+	}
+	if id, ok := t.(*ast.Ident); ok {
+		return id.Name
+	}
+	return ""
+}
+
+// addedLines marks lines of cur that are not part of a longest common
+// subsequence with prev.
+func addedLines(prev, cur []string) []bool {
+	n, m := len(prev), len(cur)
+	dp := make([][]int, n+1)
+	for i := range dp {
+		dp[i] = make([]int, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if prev[i] == cur[j] {
+				dp[i][j] = dp[i+1][j+1] + 1
+			} else {
+				dp[i][j] = max(dp[i+1][j], dp[i][j+1])
+			}
+		}
+	}
+	added := make([]bool, m)
+	i, j := 0, 0
+	for i < n && j < m {
+		switch {
+		case prev[i] == cur[j]:
+			i++
+			j++
+		case dp[i+1][j] >= dp[i][j+1]:
+			i++
+		default:
+			added[j] = true
+			j++
+		}
+	}
+	for ; j < m; j++ {
+		added[j] = true
+	}
+	// Blank lines and lone braces are noise when they are the only change.
+	for k, l := range cur {
+		if added[k] && strings.TrimSpace(l) == "" {
+			added[k] = false
+		}
+	}
+	return added
+}
+
+func (b *builder) renderTranscript(spec string) (string, error) {
+	target, _, err := parseArgs(spec)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Join(b.root, "site", "generated", filepath.FromSlash(target)+".txt"))
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	sb.WriteString(`<figure class="term"><figcaption><span class="fname">terminal</span></figcaption>` + "\n<pre tabindex=\"0\"><code>")
+	for _, l := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		if cmd, ok := strings.CutPrefix(l, "$ "); ok {
+			sb.WriteString(`<span class="ln cmd">` + html.EscapeString(cmd) + `</span>`)
+		} else {
+			sb.WriteString(`<span class="ln out">` + html.EscapeString(l) + `</span>`)
+		}
+	}
+	sb.WriteString("</code></pre></figure>")
+	return sb.String(), nil
+}
+
+func (b *builder) renderSVG(spec string) (string, error) {
+	target, opts, err := parseArgs(spec)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Join(b.root, "site", "generated", filepath.FromSlash(target)))
+	if err != nil {
+		return "", err
+	}
+	svg := strings.Replace(string(data), "<svg ", "<svg data-embedded ", 1)
+	// Unique ids so two inline charts never collide.
+	id := strings.NewReplacer("/", "-", ".", "-").Replace(target)
+	svg = strings.ReplaceAll(svg, "rc-title", id+"-title")
+	svg = strings.ReplaceAll(svg, "rc-desc", id+"-desc")
+	caption := opts["caption"]
+	var sb strings.Builder
+	sb.WriteString(`<figure class="chart">` + svg)
+	src := "generated/" + path.Clean(target)
+	sb.WriteString(`<figcaption>` + html.EscapeString(caption))
+	sb.WriteString(` <a href="` + src + `">Standalone SVG</a></figcaption></figure>`)
+	return sb.String(), nil
+}

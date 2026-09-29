@@ -1,0 +1,16 @@
+<section class="index-hero">
+  <p class="kicker"><span class="reel" aria-hidden="true">Go</span> A hands-on course</p>
+  <h1>Learn Go by building a <em>bandit</em> service</h1>
+  <p class="lede">One project, fourteen chapters. It starts as a command-line simulation of a multi-armed bandit and grows into replicated gRPC microservices, picking up the language and the backend patterns exactly when the project needs them.</p>
+</section>
+
+<h2>How the course works</h2>
+<p>A multi-armed bandit repeatedly chooses one of several options (an ad, a model variant, a ranking), observes a reward, and has to balance trying things it is unsure about against repeating what already works. That decision loop is small enough to fit in a few hundred lines and rich enough to need everything a Go backend uses: interfaces, testing, concurrency, HTTP, persistence, metrics, and finally state that has to stay consistent across replicas.</p>
+<ul>
+  <li><strong>Every listing is real.</strong> Code on these pages is pulled from <code>solutions/chNN</code>, which compiles and passes <code>go test -race</code>. Terminal output comes from running it, with fixed seeds.</li>
+  <li><strong>Each chapter is a complete snapshot.</strong> <code>cd solutions/ch05 &amp;&amp; go test -race ./...</code> works without anything else. Lines a chapter adds are marked in the margin of its listings.</li>
+  <li><strong>Exercises have tests.</strong> Each chapter ships starters in <code>exercises/chNN</code> that fail until you implement them; reference answers sit under a fold on the page.</li>
+</ul>
+<p>You need Go 1.24 or newer. Start with <!-- first-chapter -->, or read <a href="../README.md">the README</a> for how to run any chapter.</p>
+
+<!-- chapters -->
