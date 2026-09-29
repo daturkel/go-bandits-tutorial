@@ -1,0 +1,12 @@
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+?   	banditlab	[no test files]
+ok  	banditlab/bandit	1.017s
+$ go run . -seed 7 -steps 1000
+scenario=easy arms=[0.2 0.5 0.8] steps=1000 seed=7
+
+policy                   reward     regret  pulls per arm
+epsilon-greedy(0.10)        752       36.3  [45 31 924]
+ucb1                        751       46.5  [27 101 872]

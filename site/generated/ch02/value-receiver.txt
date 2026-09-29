@@ -1,0 +1,3 @@
+$ go run ./_examples
+# banditlab/_examples
+_examples/valuereceiver.go:7:24: cannot use bandit.EpsilonGreedy{} (value of struct type bandit.EpsilonGreedy) as bandit.Policy value in variable declaration: bandit.EpsilonGreedy does not implement bandit.Policy (method Name has pointer receiver)
