@@ -1,0 +1,8 @@
+$ go run . compare -scenario easy -steps 5000 -seeds 100
+scenario=easy arms=[0.2 0.5 0.8] steps=5000 seeds=100
+
+policy                   final regret
+epsilon-greedy(0.10)      159.0 ± 1.5
+epsilon-greedy(0.01)      101.6 ± 18.8
+ucb1                       64.2 ± 1.0
+thompson                   11.2 ± 0.4

@@ -1,0 +1,10 @@
+$ go run . compare -scenario needle -steps 5000 -seeds 100 -csv /tmp/regret.csv > /dev/null
+$ head -n 6 /tmp/regret.csv
+step,policy,mean_regret,stderr
+1,epsilon-greedy(0.10),0.168,0.007
+51,epsilon-greedy(0.10),7.888,0.343
+101,epsilon-greedy(0.10),14.738,0.727
+152,epsilon-greedy(0.10),20.976,1.119
+202,epsilon-greedy(0.10),26.662,1.521
+$ wc -l /tmp/regret.csv
+401 /tmp/regret.csv

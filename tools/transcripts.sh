@@ -71,6 +71,7 @@ ch04() {
   (cd "$ROOT/solutions/ch04" && go run . compare -scenario close -steps 5000 -seeds 100 \
      -svg "$ROOT/site/generated/ch04/regret-close.svg" >/dev/null)
   t ch04 csv-head 'go run . compare -scenario needle -steps 5000 -seeds 100 -csv /tmp/regret.csv > /dev/null' 'head -n 6 /tmp/regret.csv' 'wc -l /tmp/regret.csv'
+  t ch04 svg-head 'go run . compare -scenario needle -steps 5000 -seeds 100 -svg /tmp/regret.svg > /dev/null' 'head -n 4 /tmp/regret.svg | cut -c1-140' 'grep -c "<polyline" /tmp/regret.svg'
   t ch04 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 

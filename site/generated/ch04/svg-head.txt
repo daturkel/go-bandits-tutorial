@@ -1,0 +1,8 @@
+$ go run . compare -scenario needle -steps 5000 -seeds 100 -svg /tmp/regret.svg > /dev/null
+$ head -n 4 /tmp/regret.svg | cut -c1-140
+<svg class="regret-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" role="img" aria-labelledby="rc-title rc-desc">
+<title id="rc-title">Cumulative regret on the &#34;needle&#34; scenario</title>
+<desc id="rc-desc">Mean over 100 seeds; shaded band is one standard error. Final mean regret: epsilon-greedy(0.10) 161.7; epsilon-greedy(0.0
+<style>
+$ grep -c "<polyline" /tmp/regret.svg
+4

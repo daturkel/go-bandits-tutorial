@@ -1,0 +1,8 @@
+$ go run . compare -scenario needle -steps 5000 -seeds 100
+scenario=needle arms=[0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.3] steps=5000 seeds=100
+
+policy                   final regret
+epsilon-greedy(0.10)      161.7 ± 9.2
+epsilon-greedy(0.01)      423.6 ± 38.6
+ucb1                      406.0 ± 2.5
+thompson                   78.2 ± 1.4
