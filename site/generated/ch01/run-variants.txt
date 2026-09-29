@@ -1,0 +1,16 @@
+$ go run . -scenario needle -eps 0.05 -steps 100000
+scenario=needle arms=[0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.3] policy=epsilon-greedy(0.05) steps=100000 seed=42
+
+    step      regret
+      10         2.0
+     100        20.0
+    1000        62.2
+   10000       141.6
+  100000       938.0
+
+pulls per arm: [517 494 471 717 510 467 480 541 493 95310]
+total reward:  29061
+final regret:  938.0
+$ go run . -scenario nope
+unknown scenario "nope"
+exit status 2

@@ -1,5 +1,5 @@
 [
-  {"id":"ch01","label":"Chapter 1","part":"Part I: Language core","title":"Modules, packages, first simulation","summary":"Set up a Go module and write an epsilon-greedy bandit simulation that prints its regret.","status":"planned"},
+  {"id":"ch01","label":"Chapter 1","part":"Part I: Language core","title":"Modules, packages, first simulation","summary":"Set up a Go module and write an epsilon-greedy bandit simulation that prints its regret.","status":"ready"},
   {"id":"ch02","label":"Chapter 2","part":"Part I: Language core","title":"Interfaces and methods","summary":"Introduce the Policy interface, add UCB1, and swap policies without touching the runner.","status":"planned"},
   {"id":"ch03","label":"Chapter 3","part":"Part I: Language core","title":"Errors, tests, benchmarks","summary":"Make failure explicit with error values, then pin behaviour down with table-driven tests, golden files and benchmarks.","status":"planned"},
   {"id":"ch04","label":"Chapter 4","part":"Part I: Language core","title":"Generics and the comparison harness","summary":"Add Thompson sampling, write generic helpers where they earn their place, and chart regret across many seeds.","status":"planned"},

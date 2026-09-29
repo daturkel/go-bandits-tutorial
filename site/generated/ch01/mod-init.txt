@@ -1,0 +1,5 @@
+$ mkdir banditlab && cd banditlab && go mod init banditlab && cat go.mod
+go: creating new go.mod: module banditlab
+module banditlab
+
+go 1.24.7
