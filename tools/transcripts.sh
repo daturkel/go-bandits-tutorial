@@ -37,7 +37,19 @@ tfresh() {
   echo "wrote ${out#$ROOT/}"
 }
 
+# verify <chapter>: what a reader sees when tools/check.sh passes on their project.
+verify() {
+  local id=$1 out="$ROOT/site/generated/$1/verify.txt"
+  mkdir -p "$(dirname "$out")"
+  rm -rf "$ROOT/work/banditlab"
+  (cd "$ROOT" && tools/start.sh "$id" work/banditlab >/dev/null)
+  { echo "\$ tools/check.sh $id work/banditlab"; (cd "$ROOT" && tools/check.sh "$id" work/banditlab 2>&1); } > "$out"
+  rm -rf "$ROOT/work"
+  echo "wrote ${out#$ROOT/}"
+}
+
 ch01() {
+  verify ch01
   tfresh ch01 mod-init 'mkdir banditlab && cd banditlab && go mod init banditlab && cat go.mod'
   t ch01 run 'go run .'
   t ch01 run-variants 'go run . -scenario needle -eps 0.05 -steps 100000' 'go run . -scenario nope'
@@ -45,6 +57,7 @@ ch01() {
 }
 
 ch02() {
+  verify ch02
   t ch02 run 'go run .'
   t ch02 run-one 'go run . -scenario spread -policy ucb1 -steps 20000'
   t ch02 value-receiver 'go run ./_examples'
@@ -52,6 +65,7 @@ ch02() {
 }
 
 ch03() {
+  verify ch03
   t ch03 errors 'go run . -scenario nope' 'go run . -policy epsgreedy:lots' 'go run . -policy epsgreedy:2' 'go run . -policy thompson'
   t ch03 test-v 'go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit'
   t ch03 vet 'go vet ./_examples/vetbug; echo "exit status: $?"'
@@ -62,6 +76,7 @@ ch03() {
 }
 
 ch04() {
+  verify ch04
   t ch04 compare 'go run . compare -scenario needle -steps 5000 -seeds 100'
   t ch04 compare-easy 'go run . compare -scenario easy -steps 5000 -seeds 100'
   t ch04 compare-close 'go run . compare -scenario close -steps 5000 -seeds 100'

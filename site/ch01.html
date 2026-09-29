@@ -39,6 +39,10 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
   <h1>Modules, packages, first simulation</h1>
   <p class="lede">Set up a Go module and write an epsilon-greedy bandit simulation that prints its regret.</p>
 </header>
+<aside class="callout note start">
+  <p class="callout-title">Starting point</p>
+  <p>An empty directory. The commands in this course assume <code>work/banditlab</code> inside your clone of the repository (git ignores <code>work/</code>), but anywhere works.</p>
+</aside>
 
 <article class="prose">
 <h2 id="what-you-will-build">What you will build</h2>
@@ -60,6 +64,16 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
   <li>The <code>flag</code> package, <code>for</code>/<code>range</code> (including ranging over an integer), <code>switch</code></li>
 </ul>
 
+<h2 id="how-to-work-through-the-course">How to work through the course</h2>
+<p>You build one project, chapter by chapter, in a directory of your own. Nothing is hidden: every line a chapter adds appears on its page.</p>
+<ul>
+  <li><strong>Type the code or copy it from the listing.</strong> A listing shows a file or part of one. Highlighted lines in the margin are new since the previous chapter, and "full file" links to the reference copy. Excerpts leave out the <code>package</code> clause and imports; gopls adds imports when you save, or run <code>goimports -w .</code>.</li>
+  <li><strong>Long files that teach little Go</strong> are marked "Copy this file" instead of being listed.</li>
+  <li><strong>Each checkpoint starts with <code>tools/check.sh</code>.</strong> It copies your project aside, swaps in the reference tests for that chapter, and runs <code>gofmt</code>, <code>go vet</code>, <code>go build</code> and <code>go test -race</code>. It never changes your files. A compile error usually means a name differs from the page.</li>
+  <li><strong>Stuck, or skipping ahead?</strong> <code>tools/start.sh chNN work/banditlab</code> copies the reference project as it stands at the end of chapter NN into a new directory. Every chapter's page begins by naming the state it expects.</li>
+  <li><strong>Exercises</strong> live separately in <code>exercises/chNN</code> and do not depend on your project, so they work either way.</li>
+</ul>
+
 <h2 id="step-1-create-the-module">Step 1: create the module</h2>
 <p>A Go <strong>module</strong> is a tree of packages versioned together, described by a <code>go.mod</code> file at its root. A <strong>package</strong> is a directory of <code>.go</code> files that share a <code>package</code> clause; it is the unit of compilation and of import. There is no separate build file, no virtual environment, and no install step: the toolchain reads <code>go.mod</code> and builds.</p>
 <figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
@@ -69,7 +83,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 <figcaption><span class="fname">go.mod</span><a class="fsrc" href="../solutions/ch01/go.mod">full file</a><button type="button" class="copy" aria-label="Copy code">Copy</button></figcaption>
 <pre tabindex="0"><code><span class="ln" data-n="1">module banditlab</span><span class="ln" data-n="2"></span><span class="ln" data-n="3">go 1.24.0</span><span class="ln" data-n="4"></span><span class="ln" data-n="5">toolchain go1.24.7</span></code></pre>
 </figure>
-<p>The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the exact release the <code>go</code> command will use, downloading it if your local one is older. Nothing else is needed: this module has no dependencies, so there is no lock file yet.</p>
+<p>The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the exact release the <code>go</code> command will use, downloading it if your local one is older. Nothing else is needed: this module has no dependencies, so there is no lock file yet. Create the file in your project directory with that content.</p>
 
 <p>The layout for this chapter is deliberately small:</p>
 <figure class="term"><figcaption><span class="fname">layout</span></figcaption>
@@ -188,9 +202,12 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <h2 id="checkpoint">Checkpoint</h2>
 <div class="checkpoint">
-<p>From <code>solutions/ch01</code>, all of these should succeed with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit and costs little).</p>
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
 <figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
-<pre tabindex="0"><code><span class="ln cmd">gofmt -l .</span><span class="ln cmd">go vet ./...</span><span class="ln cmd">go build ./...</span><span class="ln cmd">go test -race ./...</span><span class="ln out">?   	banditlab	[no test files]</span><span class="ln out">ok  	banditlab/bandit	(cached)</span><span class="ln cmd">go run . -seed 7 -steps 1000</span><span class="ln out">scenario=easy arms=[0.2 0.5 0.8] policy=epsilon-greedy(0.10) steps=1000 seed=7</span><span class="ln out"></span><span class="ln out">    step      regret</span><span class="ln out">      10         0.0</span><span class="ln out">     100         3.6</span><span class="ln out">    1000        36.3</span><span class="ln out"></span><span class="ln out">pulls per arm: [45 31 924]</span><span class="ln out">total reward:  752</span><span class="ln out">final regret:  36.3</span></code></pre></figure>
+<pre tabindex="0"><code><span class="ln cmd">tools/check.sh ch01 work/banditlab</span><span class="ln cmd">gofmt -l .</span><span class="ln cmd">go vet ./...</span><span class="ln cmd">go build ./...</span><span class="ln cmd">go test -race -count=1 ./...</span><span class="ln out">?   	banditlab	[no test files]</span><span class="ln out">ok  	banditlab/bandit	1.032s</span><span class="ln out"></span><span class="ln out">PASS: your project satisfies the ch01 tests</span></code></pre></figure>
+<p>The same checks by hand, from your project directory; all should succeed with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit and costs little).</p>
+<figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">gofmt -l .</span><span class="ln cmd">go vet ./...</span><span class="ln cmd">go build ./...</span><span class="ln cmd">go test -race -count=1 ./...</span><span class="ln out">?   	banditlab	[no test files]</span><span class="ln out">ok  	banditlab/bandit	1.024s</span><span class="ln cmd">go run . -seed 7 -steps 1000</span><span class="ln out">scenario=easy arms=[0.2 0.5 0.8] policy=epsilon-greedy(0.10) steps=1000 seed=7</span><span class="ln out"></span><span class="ln out">    step      regret</span><span class="ln out">      10         0.0</span><span class="ln out">     100         3.6</span><span class="ln out">    1000        36.3</span><span class="ln out"></span><span class="ln out">pulls per arm: [45 31 924]</span><span class="ln out">total reward:  752</span><span class="ln out">final regret:  36.3</span></code></pre></figure>
 <p>Test timings vary between machines; the simulation numbers do not.</p>
 </div>
 
@@ -250,7 +267,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <aside class="toc" aria-label="On this page">
   <p class="toc-title">On this page</p>
-  <ol><li><a href="#what-you-will-build">What you will build</a></li><li><a href="#concepts-introduced">Concepts introduced</a></li><li><a href="#step-1-create-the-module">Step 1: create the module</a></li><li><a href="#step-2-seeded-randomness">Step 2: seeded randomness</a></li><li><a href="#step-3-the-environment">Step 3: the environment</a></li><li><a href="#step-4-named-scenarios-with-a-map">Step 4: named scenarios with a map</a></li><li><a href="#step-5-the-epsilon-greedy-policy">Step 5: the epsilon-greedy policy</a></li><li><a href="#step-6-the-simulation-loop">Step 6: the simulation loop</a></li><li><a href="#step-7-the-command-line-program">Step 7: the command-line program</a></li><li><a href="#step-8-a-first-test">Step 8: a first test</a></li><li><a href="#checkpoint">Checkpoint</a></li><li><a href="#exercises">Exercises</a></li></ol>
+  <ol><li><a href="#what-you-will-build">What you will build</a></li><li><a href="#concepts-introduced">Concepts introduced</a></li><li><a href="#how-to-work-through-the-course">How to work through the course</a></li><li><a href="#step-1-create-the-module">Step 1: create the module</a></li><li><a href="#step-2-seeded-randomness">Step 2: seeded randomness</a></li><li><a href="#step-3-the-environment">Step 3: the environment</a></li><li><a href="#step-4-named-scenarios-with-a-map">Step 4: named scenarios with a map</a></li><li><a href="#step-5-the-epsilon-greedy-policy">Step 5: the epsilon-greedy policy</a></li><li><a href="#step-6-the-simulation-loop">Step 6: the simulation loop</a></li><li><a href="#step-7-the-command-line-program">Step 7: the command-line program</a></li><li><a href="#step-8-a-first-test">Step 8: a first test</a></li><li><a href="#checkpoint">Checkpoint</a></li><li><a href="#exercises">Exercises</a></li></ol>
 </aside>
 
 </div>

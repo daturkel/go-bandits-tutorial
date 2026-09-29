@@ -13,9 +13,30 @@ open site/index.html            # macOS
 
 Each chapter page explains what it builds and why, introduces language features at the moment the project needs them, and ends with a checkpoint (commands plus the output you should see) and exercises with collapsible reference answers.
 
-## Running any chapter
+## Following along
 
-You need **Go 1.24 or newer** (`go version`). `go.mod` pins the toolchain, so an older Go 1.21+ installation downloads the right one on demand.
+The intended path is to build the project yourself, one chapter at a time, in a directory of your own. `work/banditlab` inside your clone is convenient (git ignores `work/`), and the commands below assume it; anywhere works.
+
+1. Chapter 1 starts from an empty directory. Each later chapter starts from your project as it stood at the end of the previous one.
+2. Type or copy each listing from the page. Highlighted lines are new in that chapter; excerpts omit `package` and imports (gopls adds imports on save).
+3. At the end of a chapter, check your work against the reference tests:
+
+   ```sh
+   tools/check.sh ch03 work/banditlab
+   ```
+
+   The script copies your project aside, swaps in that chapter's reference tests, and runs `gofmt`, `go vet`, `go build` and `go test -race`. It never modifies your files. A compile error usually means a name differs from the page.
+4. If your project has drifted, or you want to skip ahead, start from the reference version of any chapter:
+
+   ```sh
+   tools/start.sh ch05 work/banditlab   # copies solutions/ch05 into a new directory
+   ```
+
+The builder fails if a chapter adds source lines that its page neither shows nor tells you to copy, so the pages are enough to reconstruct each chapter.
+
+## Running a reference solution directly
+
+You need **Go 1.24 or newer** (`go version`). `go.mod` pins the toolchain, so any Go 1.21+ installation downloads the right one on demand.
 
 `solutions/chNN` is a complete, self-contained snapshot of the project at the end of chapter NN, not a diff:
 
@@ -45,7 +66,7 @@ Reference answers are on the chapter page and in `exM/reference/`.
 | `site/` | The course website. `index.html` and `chNN.html` are built output; `src/` holds page sources with include markers. |
 | `solutions/` | Per-chapter snapshots. Every page listing is pulled from here. |
 | `exercises/` | Exercise starters, tests, and reference answers. |
-| `tools/` | The site builder (`build_site`), the transcript generator, and the exercise checker. |
+| `tools/` | `check.sh` and `start.sh` for readers; the site builder (`build_site`), transcript generator, and exercise checker for maintainers. |
 | `TODO.md` | Anything that could not be verified or was deferred. |
 
 ## Maintaining the site
@@ -56,9 +77,10 @@ Pages are built from real source, never retyped. A page source in `site/src/` co
 <!-- include: ch02/bandit/policy.go#Policy title="policy.go" diff -->
 <!-- transcript: ch02/run -->
 <!-- svg: ch04/regret-needle.svg caption="..." -->
+<!-- copy: ch04/harness/svg.go why="..." -->
 ```
 
-`include` embeds a declaration (`#Name`, `#Type.Method`, a comma-separated list) or a `region: NAME` block from a file under `solutions/`, escaped and syntax-highlighted; `diff` marks the lines that differ from the same file in the previous chapter. `transcript` embeds real command output and `svg` inlines a generated chart.
+`include` embeds a declaration (`#Name`, `#Type.Method`, a comma-separated list) or a `region: NAME` block from a file under `solutions/`, escaped and syntax-highlighted; `diff` marks the lines that differ from the same file in the previous chapter. `transcript` embeds real command output, `svg` inlines a generated chart, and `copy` tells the reader to copy a file instead of typing it. Every non-test source line a chapter adds must be covered by an `include` or a `copy`, or the build fails.
 
 ```sh
 tools/transcripts.sh ch04                   # re-run commands, refresh site/generated/

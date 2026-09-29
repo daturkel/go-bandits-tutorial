@@ -26,7 +26,8 @@
 <p>Every policy so far needs per-arm pull counts and running means. Rather than copy that into UCB1, pull it into a small type:</p>
 <!-- include: ch02/bandit/stats.go diff -->
 <p>Now <code>EpsilonGreedy</code> <strong>embeds</strong> it: a field with a type but no name.</p>
-<!-- include: ch02/bandit/epsgreedy.go#EpsilonGreedy,NewEpsilonGreedy,EpsilonGreedy.Name diff -->
+<!-- include: ch02/bandit/epsgreedy.go diff -->
+<p>The <code>values</code> slice is gone, replaced by <code>armStats.means</code>, so <code>Select</code> and <code>greedy</code> change only in that name. The <code>Name</code> method is new.</p>
 <p>Embedding promotes the embedded type's fields and methods, so <code>p.means</code>, <code>p.counts</code>, and <code>p.Update(arm, r)</code> all work directly on an <code>EpsilonGreedy</code>. The policy no longer defines <code>Update</code> itself; it inherits the method from <code>armStats</code>.</p>
 <p>It looks like inheritance, but it is composition: <code>armStats</code> is an ordinary field (it even has a name, <code>armStats</code>, that you can use to reach it), and the promoted method runs with <code>armStats</code> as its receiver. It cannot see the outer type, and there is no <code>super</code> and no virtual dispatch back into the outer type. If you need to override, you define a method with the same name on the outer type, as exercise 2 does.</p>
 <p>The type <code>armStats</code> starts with a lowercase letter, so it is invisible outside the package, but its <em>exported</em> method <code>Update</code> is still promoted onto the exported <code>EpsilonGreedy</code> and counts towards satisfying <code>Policy</code>.</p>
@@ -78,7 +79,9 @@
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>From <code>solutions/ch02</code>:</p>
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch02/verify -->
+<p>The same checks by hand, from your project directory:</p>
 <!-- transcript: ch02/checkpoint -->
 <p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one.</p>
 </div>

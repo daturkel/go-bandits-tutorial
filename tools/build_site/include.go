@@ -20,11 +20,24 @@ import (
 //
 // The fragment after # selects declarations (Name or Type.Method) or a
 // `region: Name` ... `endregion: Name` block. lines=a-b selects raw lines.
-var markerRE = regexp.MustCompile(`<!--\s*(include|transcript|svg):\s*(.*?)\s*-->`)
+var markerRE = regexp.MustCompile(`<!--\s*(include|copy|transcript|svg):\s*(.*?)\s*-->`)
 
 type builder struct {
 	root     string // repository root
 	chapters []Chapter
+	shown    map[string]map[int]bool // file (relative to solutions/) -> lines displayed on the current page
+}
+
+func (b *builder) markShown(file string, from, to int) {
+	if b.shown == nil {
+		b.shown = map[string]map[int]bool{}
+	}
+	if b.shown[file] == nil {
+		b.shown[file] = map[int]bool{}
+	}
+	for n := from; n <= to; n++ {
+		b.shown[file][n] = true
+	}
 }
 
 type codeLine struct {
@@ -42,6 +55,8 @@ func (b *builder) expand(page string, chapterID string) (string, error) {
 		switch sub[1] {
 		case "include":
 			res, err = b.renderInclude(sub[2])
+		case "copy":
+			res, err = b.renderCopy(sub[2])
 		case "transcript":
 			res, err = b.renderTranscript(sub[2])
 		case "svg":
@@ -171,6 +186,11 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	}
 
 	var shown []codeLine
+	if !isExercise {
+		for _, r := range ranges {
+			b.markShown(file, r.from, r.to)
+		}
+	}
 	for ri, r := range ranges {
 		if ri > 0 {
 			shown = append(shown, codeLine{n: 0, html: ""})
@@ -431,4 +451,120 @@ func (b *builder) renderSVG(spec string) (string, error) {
 	sb.WriteString(`<figcaption>` + html.EscapeString(caption))
 	sb.WriteString(` <a href="` + src + `">Standalone SVG</a></figcaption></figure>`)
 	return sb.String(), nil
+}
+
+// renderCopy handles a file the reader is told to copy rather than type. It
+// counts as covering every line of the file for the coverage check.
+func (b *builder) renderCopy(spec string) (string, error) {
+	target, opts, err := parseArgs(spec)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Join(b.root, "solutions", filepath.FromSlash(target)))
+	if err != nil {
+		return "", err
+	}
+	n := len(strings.Split(strings.TrimSuffix(string(data), "\n"), "\n"))
+	b.markShown(target, 1, n)
+	_, rel, _ := strings.Cut(target, "/")
+	why := opts["why"]
+	if why == "" {
+		why = "it is long and not about Go itself"
+	}
+	return fmt.Sprintf(`<aside class="callout note"><p class="callout-title">Copy this file</p><p>Copy <a href="../solutions/%s"><code>%s</code></a> from <code>solutions/%s</code> instead of typing it; %s.</p></aside>`,
+		html.EscapeString(target), html.EscapeString(rel), html.EscapeString(strings.SplitN(target, "/", 2)[0]), html.EscapeString(why)), nil
+}
+
+// checkCoverage fails if a chapter adds source lines that its page neither
+// shows nor tells the reader to copy. Test files, _examples and import blocks
+// are exempt: tests are supplied by tools/check.sh, and gopls adds imports.
+func (b *builder) checkCoverage(chapterID string) error {
+	dir := filepath.Join(b.root, "solutions", chapterID)
+	prev := previousChapter(chapterID)
+	var problems []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "_") || d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+		added := make([]bool, len(lines))
+		for i := range added {
+			added[i] = true
+		}
+		if prev != "" {
+			if pd, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, rel)); perr == nil {
+				added = addedLines(strings.Split(strings.TrimSuffix(string(pd), "\n"), "\n"), lines)
+			}
+		}
+		exempt := packageAndImportLines(string(data))
+		key := chapterID + "/" + filepath.ToSlash(rel)
+		var missing []int
+		for i := range lines {
+			n := i + 1
+			if added[i] && !exempt[n] && !b.shown[key][n] && strings.TrimSpace(lines[i]) != "" {
+				missing = append(missing, n)
+			}
+		}
+		if len(missing) > 0 {
+			problems = append(problems, fmt.Sprintf("%s: lines not shown or copied: %s", key, ranges(missing)))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("%s adds source the page does not show:\n  %s", chapterID, strings.Join(problems, "\n  "))
+	}
+	return nil
+}
+
+func packageAndImportLines(src string) map[int]bool {
+	out := map[int]bool{}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", src, parser.ImportsOnly)
+	if err != nil {
+		return out
+	}
+	mark := func(from, to token.Pos) {
+		for n := fset.Position(from).Line; n <= fset.Position(to).Line; n++ {
+			out[n] = true
+		}
+	}
+	mark(f.Package, f.Name.End())
+	for _, d := range f.Decls {
+		mark(d.Pos(), d.End())
+	}
+	return out
+}
+
+func ranges(ns []int) string {
+	var parts []string
+	for i := 0; i < len(ns); {
+		j := i
+		for j+1 < len(ns) && ns[j+1] == ns[j]+1 {
+			j++
+		}
+		if i == j {
+			parts = append(parts, strconv.Itoa(ns[i]))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d-%d", ns[i], ns[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ", ")
 }

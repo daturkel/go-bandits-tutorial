@@ -42,9 +42,11 @@
 <p>The scenario lookup graduates from <code>(value, bool)</code> to an error that names the culprit and the valid choices:</p>
 <!-- include: ch03/bandit/scenarios.go#Scenario diff -->
 <p>Policies can now be configured from a spec string such as <code>epsgreedy:0.05</code>, and parsing brings a new source of errors, the standard library's own:</p>
-<!-- include: ch03/bandit/policy.go#NewPolicy diff -->
-<p><code>strings.Cut</code> splits on the first colon. When <code>strconv.ParseFloat</code> fails, its error already says what was wrong; we wrap it with the spec that caused it, keeping the original reachable with <code>%w</code>. The constructors validate as well, so <code>epsgreedy:2</code> fails with <code>ErrInvalidEpsilon</code>.</p>
-<p>Look closely at the two <code>if err != nil { return nil, err }</code> blocks. They look redundant (<code>return NewUCB1(nArms)</code> would type-check), and they are not. <code>NewUCB1</code> returns a <code>*UCB1</code>, and on failure that pointer is <code>nil</code>. Returning it as a <code>Policy</code> would wrap the nil pointer in a non-nil interface value, so the caller's <code>pol == nil</code> would be false. A small program shows it firing:</p>
+<!-- include: ch03/bandit/policy.go#PolicyNames,defaultEpsilon,NewPolicy diff -->
+<p><code>strings.Cut</code> splits on the first colon. When <code>strconv.ParseFloat</code> fails, its error already says what was wrong; we wrap it with the spec that caused it, keeping the original reachable with <code>%w</code>. The constructors validate as well, so <code>epsgreedy:2</code> fails with <code>ErrInvalidEpsilon</code> and a zero-arm policy fails with <code>ErrNoArms</code>:</p>
+<!-- include: ch03/bandit/epsgreedy.go#NewEpsilonGreedy diff -->
+<!-- include: ch03/bandit/ucb1.go#NewUCB1 diff -->
+<p>Back in <code>NewPolicy</code>, look closely at the two <code>if err != nil { return nil, err }</code> blocks. They look redundant (<code>return NewUCB1(nArms)</code> would type-check), and they are not. <code>NewUCB1</code> returns a <code>*UCB1</code>, and on failure that pointer is <code>nil</code>. Returning it as a <code>Policy</code> would wrap the nil pointer in a non-nil interface value, so the caller's <code>pol == nil</code> would be false. A small program shows it firing:</p>
 <!-- include: ch03/_examples/typednil/main.go title="_examples/typednil/main.go" lines=21-38 -->
 <!-- transcript: ch03/typednil -->
 <p>An interface value is a (type, value) pair, and it is <code>nil</code> only when both are empty. In <code>direct</code>, the type slot holds <code>*main.Greedy</code>. There is a regression test for this in the suite, and chapter 4 removes the repetition with a generic helper.</p>
@@ -104,7 +106,9 @@
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>From <code>solutions/ch03</code> (<code>-count=1</code> disables test-result caching so the tests really run):</p>
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch03/verify -->
+<p>The same checks by hand, from your project directory (<code>-count=1</code> disables test-result caching so the tests really run):</p>
 <!-- transcript: ch03/checkpoint -->
 <p>The run at the bottom is identical in numbers to chapter 2's, as it should be: this chapter changed how failures are reported, not how the simulation behaves. The golden test would have caught it otherwise.</p>
 </div>

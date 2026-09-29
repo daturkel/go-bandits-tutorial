@@ -26,6 +26,7 @@ exercises/   chNN/ starters + tests; exM/reference/ holds the answer
 - `solutions/chNN` are full snapshots, not diffs: `cd solutions/ch05 && go test -race ./...` works alone.
 - One commit per chapter, tagged `chNN`: solution snapshot, page, exercise files.
 - A chapter page ends with the exact commands to check work and the output expected.
+- The primary path is the reader building their own project one chapter at a time (`work/banditlab`, git-ignored). `tools/check.sh chNN [dir]` runs the chapter's reference tests against their code; `tools/start.sh chNN dir` gives skip-ahead and recovery. Each page states its starting point. The site builder enforces that every non-test line a chapter adds is shown via `include` or covered by `copy`. Reference tests may only use names the page defines.
 
 ## Chapter page format
 

@@ -1,0 +1,9 @@
+$ tools/check.sh ch03 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab	1.014s
+ok  	banditlab/bandit	1.019s
+
+PASS: your project satisfies the ch03 tests

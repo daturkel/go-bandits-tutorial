@@ -33,7 +33,7 @@
 <p>With that in place the policies simplify. Epsilon-greedy's private tie-breaking loop is gone:</p>
 <!-- include: ch04/bandit/epsgreedy.go#EpsilonGreedy.Select diff -->
 <p>and UCB1 computes its scores into a reusable slice and hands them to the same helper:</p>
-<!-- include: ch04/bandit/ucb1.go#UCB1.Select diff -->
+<!-- include: ch04/bandit/ucb1.go diff -->
 <p>Passing <code>nil</code> for the generator selects "lowest index wins" and keeps UCB1 deterministic. Using nil to mean "lowest index" is a compromise; if the two behaviours diverged further, two functions would be clearer.</p>
 <!-- include: ch04/bandit/argmax_test.go#TestArgmax -->
 <p>The test calls the same function with floats, ints and strings, which is the point of the exercise.</p>
@@ -45,7 +45,7 @@
 
 <h2>Step 3: where generics do not help</h2>
 <p>Chapter 3's <code>NewPolicy</code> repeated a four-line <code>if err != nil</code> block per policy to avoid returning a typed nil. It is tempting to reach for a type parameter to remove it. The better tool is the one we already have:</p>
-<!-- include: ch04/bandit/policy.go#NewPolicy,asPolicy diff -->
+<!-- include: ch04/bandit/policy.go#PolicyNames,NewPolicy,asPolicy diff -->
 <p><code>asPolicy</code> takes a <code>Policy</code> and an error. Calling <code>asPolicy(NewUCB1(nArms))</code> is legal because a call that returns two values can be passed directly as two arguments, and because the helper checks <code>err</code> itself and returns a true <code>nil</code> when there is one, the trap never escapes. No type parameter is needed: the function only asks "is there an error?", not anything about the concrete type. A rule of thumb that holds up: <strong>if a function only calls methods, take an interface; if it needs to hold, compare, or return values of the caller's own type, use a type parameter</strong>.</p>
 <p>The same reasoning is why the <code>Policy</code> interface stays an interface. Turning the runner into <code>Run[P Policy](env, pol P, ...)</code> would work, but every caller would pay for a more complicated signature and gain nothing, and you could not put policies of different kinds in one slice of a type parameter (you can in a <code>[]Policy</code>, which the harness relies on).</p>
 
@@ -75,12 +75,16 @@
 <!-- transcript: ch04/csv-head -->
 <p>The chart is generated the same way, as a text SVG written with <code>fmt.Fprintf</code> into a <code>strings.Builder</code>. Two details make it fit a documentation site. First, colours are CSS custom properties with fallbacks (<code>var(--series-1)</code>), so the page can restyle it for dark mode while the standalone file still looks right. Second, it carries a <code>&lt;title&gt;</code> and <code>&lt;desc&gt;</code> that state the final numbers in words for screen readers, and each line is labelled directly at its right end with a marker in its colour. Lines also differ by dash pattern, so identity never rests on colour alone.</p>
 <!-- include: ch04/harness/svg.go#niceTicks,formatTick -->
-<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is straightforward coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. Read it in full at <code>solutions/ch04/harness/svg.go</code>. Its output is just text:</p>
+<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is straightforward coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. It is around 140 lines and teaches little Go beyond <code>fmt</code> and <code>strings.Builder</code>, so copy the whole file rather than typing it:</p>
+<!-- copy: ch04/harness/svg.go why="it is coordinate arithmetic and string formatting" -->
+<p>Its output is just text:</p>
 <!-- transcript: ch04/svg-head -->
 
 <h2>Step 7: the compare subcommand</h2>
 <p>The CLI now has two subcommands. <code>main</code> only dispatches; each subcommand gets its own <code>flag.FlagSet</code>, so <code>run</code> and <code>compare</code> can have different flags:</p>
-<!-- include: ch04/main.go#run diff -->
+<!-- include: ch04/main.go#usage,run diff -->
+<p>Chapter 3's <code>run</code> function moves to its own file as <code>runCmd</code>. Its flag set gets a new name and <code>thompson</code> joins the default policy list; the rest is unchanged.</p>
+<!-- include: ch04/run.go diff -->
 <p>The new subcommand wires flags to the harness and writes the optional files:</p>
 <!-- include: ch04/compare.go#compareCmd,writeFile diff -->
 <p><code>writeFile</code> uses a <em>named result</em> <code>err</code> and a <code>defer</code> so the close error is joined with the write error instead of being dropped. A failed <code>Close</code> on a file you have written to can mean the data never reached the disk. <code>defer</code> runs its function when the surrounding function returns, whichever path it takes, which is how Go does the job of Python's <code>with</code> blocks and <code>finally</code>.</p>
@@ -102,7 +106,9 @@
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>From <code>solutions/ch04</code>. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch04/verify -->
+<p>The same checks by hand, from your project directory. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
 <!-- transcript: ch04/checkpoint -->
 <p>The final line is the <code>run</code> subcommand (chapter 3's behaviour, now with Thompson added as a third row). The whole compare run finishes in about a second on the machine that produced this page.</p>
 </div>

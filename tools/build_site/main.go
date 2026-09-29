@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"html/template"
@@ -77,15 +78,22 @@ func build(root string) error {
 		return err
 	}
 	b := &builder{root: root, chapters: chapters}
+	var coverageErrs []error
 
 	render := func(name string, pd pageData, outName string) error {
 		src, err := os.ReadFile(filepath.Join(root, "site", "src", name))
 		if err != nil {
 			return err
 		}
+		b.shown = nil
 		body, err := b.expand(string(src), pd.Title)
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)
+		}
+		if pd.Chapter != nil && strings.HasPrefix(pd.Chapter.ID, "ch") {
+			if err := b.checkCoverage(pd.Chapter.ID); err != nil {
+				coverageErrs = append(coverageErrs, err)
+			}
 		}
 		if pd.IsIndex {
 			body = strings.Replace(body, "<!-- chapters -->", chapterList(chapters), 1)
@@ -129,6 +137,9 @@ func build(root string) error {
 		if err := render(c.ID+".html", pd, c.File()); err != nil {
 			return err
 		}
+	}
+	if err := errors.Join(coverageErrs...); err != nil {
+		return err
 	}
 	return checkLinks(root)
 }
