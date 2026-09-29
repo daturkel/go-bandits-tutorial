@@ -94,6 +94,11 @@ func build(root string) error {
 			if err := b.checkCoverage(pd.Chapter.ID); err != nil {
 				coverageErrs = append(coverageErrs, err)
 			}
+			b.collectShownNames()
+			if err := b.checkTestNames(pd.Chapter.ID); err != nil {
+				coverageErrs = append(coverageErrs, err)
+			}
+			body = strings.Replace(body, "<!-- tests -->", b.renderTests(pd.Chapter.ID), 1)
 		}
 		if pd.IsIndex {
 			body = strings.Replace(body, "<!-- chapters -->", chapterList(chapters), 1)

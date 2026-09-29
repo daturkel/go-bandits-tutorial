@@ -81,6 +81,7 @@
 <div class="checkpoint">
 <p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
 <!-- transcript: ch02/verify -->
+<!-- tests -->
 <p>The same checks by hand, from your project directory:</p>
 <!-- transcript: ch02/checkpoint -->
 <p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one.</p>

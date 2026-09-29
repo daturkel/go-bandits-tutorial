@@ -21,8 +21,9 @@
 <p>You build one project, chapter by chapter, in a directory of your own. Nothing is hidden: every line a chapter adds appears on its page.</p>
 <ul>
   <li><strong>Type the code or copy it from the listing.</strong> A listing shows a file or part of one. Highlighted lines in the margin are new since the previous chapter, and "full file" links to the reference copy. Excerpts leave out the <code>package</code> clause and imports; gopls adds imports when you save, or run <code>goimports -w .</code>.</li>
+  <li><strong>Use the names exactly as listed.</strong> That covers types, functions, methods, fields and constants, and the directories <code>bandit/</code>, <code>harness/</code> and <code>stat/</code> (file names inside a package do not matter). The reference tests compile against your code, so a misspelled name shows up as an <code>undefined</code> error. Every name the tests use appears in a listing on that chapter's page or an earlier one. Any module path works, but your imports must match it.</li>
   <li><strong>Long files that teach little Go</strong> are marked "Copy this file" instead of being listed.</li>
-  <li><strong>Each checkpoint starts with <code>tools/check.sh</code>.</strong> It copies your project aside, swaps in the reference tests for that chapter, and runs <code>gofmt</code>, <code>go vet</code>, <code>go build</code> and <code>go test -race</code>. It never changes your files. A compile error usually means a name differs from the page.</li>
+  <li><strong>Each checkpoint starts with <code>tools/check.sh</code>.</strong> It copies your project aside, swaps in the reference tests for that chapter, and runs <code>gofmt</code>, <code>go vet</code>, <code>go build</code> and <code>go test -race</code>. It never changes your files. The reference tests are linked from each checkpoint if you want to read them.</li>
   <li><strong>Stuck, or skipping ahead?</strong> <code>tools/start.sh chNN work/banditlab</code> copies the reference project as it stands at the end of chapter NN into a new directory. Every chapter's page begins by naming the state it expects.</li>
   <li><strong>Exercises</strong> live separately in <code>exercises/chNN</code> and do not depend on your project, so they work either way.</li>
 </ul>
@@ -121,6 +122,7 @@
 <div class="checkpoint">
 <p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
 <!-- transcript: ch01/verify -->
+<!-- tests -->
 <p>The same checks by hand, from your project directory; all should succeed with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit and costs little).</p>
 <!-- transcript: ch01/checkpoint -->
 <p>Test timings vary between machines; the simulation numbers do not.</p>

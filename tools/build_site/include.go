@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -26,6 +27,7 @@ type builder struct {
 	root     string // repository root
 	chapters []Chapter
 	shown    map[string]map[int]bool // file (relative to solutions/) -> lines displayed on the current page
+	names    map[string]bool         // identifiers the course has shown so far, across pages
 }
 
 func (b *builder) markShown(file string, from, to int) {
@@ -567,4 +569,140 @@ func ranges(ns []int) string {
 		i = j + 1
 	}
 	return strings.Join(parts, ", ")
+}
+
+// collectShownNames adds every identifier appearing in this page's displayed
+// lines to the cumulative set of names the reader has been shown.
+func (b *builder) collectShownNames() {
+	if b.names == nil {
+		b.names = map[string]bool{}
+	}
+	for file, lines := range b.shown {
+		data, err := os.ReadFile(filepath.Join(b.root, "solutions", filepath.FromSlash(file)))
+		if err != nil || !strings.HasSuffix(file, ".go") {
+			continue
+		}
+		src := strings.Split(string(data), "\n")
+		for n := range lines {
+			if n >= 1 && n <= len(src) {
+				for _, id := range identRE.FindAllString(src[n-1], -1) {
+					b.names[id] = true
+				}
+			}
+		}
+	}
+}
+
+var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+
+// checkTestNames fails if the chapter's reference tests use a name that is
+// declared in the chapter's non-test code but has not been shown on this page
+// or an earlier one. Those are the names a reader must spell exactly.
+func (b *builder) checkTestNames(chapterID string) error {
+	dir := filepath.Join(b.root, "solutions", chapterID)
+	declared := map[string]bool{}
+	type use struct{ name, file string }
+	var uses []use
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "_") || d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return perr
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if strings.HasSuffix(path, "_test.go") {
+			ast.Inspect(f, func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.Ident:
+					uses = append(uses, use{n.Name, rel})
+				}
+				return true
+			})
+			return nil
+		}
+		for _, decl := range f.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				declared[d.Name.Name] = true
+			case *ast.GenDecl:
+				for _, sp := range d.Specs {
+					switch sp := sp.(type) {
+					case *ast.TypeSpec:
+						declared[sp.Name.Name] = true
+						ast.Inspect(sp.Type, func(n ast.Node) bool {
+							if fl, ok := n.(*ast.Field); ok {
+								for _, nm := range fl.Names {
+									declared[nm.Name] = true
+								}
+							}
+							return true
+						})
+					case *ast.ValueSpec:
+						for _, nm := range sp.Names {
+							declared[nm.Name] = true
+						}
+					}
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	missing := map[string]string{}
+	for _, u := range uses {
+		if declared[u.name] && !b.names[u.name] && u.name != "main" && u.name != "_" {
+			if _, ok := missing[u.name]; !ok {
+				missing[u.name] = u.file
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	var parts []string
+	for name, file := range missing {
+		parts = append(parts, fmt.Sprintf("%s (used in %s)", name, file))
+	}
+	sort.Strings(parts)
+	return fmt.Errorf("%s: reference tests use names no page has shown:\n  %s", chapterID, strings.Join(parts, "\n  "))
+}
+
+// renderTests lists the reference test files that tools/check.sh applies.
+func (b *builder) renderTests(chapterID string) string {
+	dir := filepath.Join(b.root, "solutions", chapterID)
+	var items []string
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "_") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(rel, "_test.go") || strings.Contains(filepath.ToSlash(rel), "testdata/") {
+			items = append(items, fmt.Sprintf(`<li><a href="../solutions/%s/%s"><code>%s</code></a></li>`, chapterID, filepath.ToSlash(rel), filepath.ToSlash(rel)))
+		}
+		return nil
+	})
+	if len(items) == 0 {
+		return ""
+	}
+	return `<details class="tests-list"><summary>Reference tests <code>check.sh</code> runs (you do not need to write these)</summary><ul>` + strings.Join(items, "") + `</ul></details>`
 }

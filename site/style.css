@@ -186,3 +186,6 @@ details.answer > summary { cursor: pointer; font: 600 .9rem var(--sans); color: 
 @media (prefers-reduced-motion: no-preference) { .chapter-card > a { transition: transform .12s, border-color .12s; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 @media (max-width: 520px) { body { font-size: 1rem; } figure pre { font-size: .8rem; } figure.code .ln { padding-left: 3rem; } .pager { grid-template-columns: 1fr; } .pager .next { grid-column: 1; } }
+details.tests-list { margin: 1rem 0; font: .9rem var(--sans); }
+details.tests-list summary { cursor: pointer; color: var(--accent); }
+details.tests-list ul { margin: .5rem 0 0; }
