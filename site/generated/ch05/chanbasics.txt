@@ -1,0 +1,6 @@
+$ go run ./_examples/chanbasics
+received 3 messages
+buffered: 2 of 2
+got 1
+got 2
+after close: 0 false

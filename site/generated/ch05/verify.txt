@@ -1,0 +1,11 @@
+$ tools/check.sh ch05 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab	1.104s
+ok  	banditlab/bandit	1.267s
+ok  	banditlab/harness	1.175s
+ok  	banditlab/stat	1.024s
+
+PASS: your project satisfies the ch05 tests

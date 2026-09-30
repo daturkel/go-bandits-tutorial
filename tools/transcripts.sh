@@ -7,6 +7,7 @@
 # "$ command" lines followed by that command's real output. Seeded simulation
 # output is reproducible; timings (go test, benchmarks) vary between machines.
 set -u
+export TIMEFORMAT='real %2Rs, cpu %2Us'
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # t <chapter> <name> <commands...>: run each command in solutions/<chapter>.
@@ -90,5 +91,17 @@ ch04() {
   t ch04 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04; fi
+ch05() {
+  verify ch05
+  t ch05 chanbasics 'go run ./_examples/chanbasics'
+  t ch05 deadlock 'go run ./_examples/deadlock 2>&1 | head -4'
+  t ch05 bench 'go test -run "^$" -bench Compare ./harness'
+  t ch05 timing 'go build -o /tmp/banditsim .' \
+    'time /tmp/banditsim compare -sequential -scenario needle -steps 5000 -seeds 100 > /dev/null' \
+    'time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 100 > /dev/null' \
+    'diff <(/tmp/banditsim compare -sequential -seeds 20) <(/tmp/banditsim compare -seeds 20) && echo "identical output"'
+  t ch05 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05; fi
 for c in "$@"; do "$c"; done

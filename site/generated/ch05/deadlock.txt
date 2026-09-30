@@ -1,0 +1,5 @@
+$ go run ./_examples/deadlock 2>&1 | head -4
+fatal error: all goroutines are asleep - deadlock!
+
+goroutine 1 [chan send]:
+main.main()

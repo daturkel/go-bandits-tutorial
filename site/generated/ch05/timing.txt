@@ -1,0 +1,7 @@
+$ go build -o /tmp/banditsim .
+$ time /tmp/banditsim compare -sequential -scenario needle -steps 5000 -seeds 100 > /dev/null
+real 0.71s, cpu 0.69s
+$ time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 100 > /dev/null
+real 0.22s, cpu 0.76s
+$ diff <(/tmp/banditsim compare -sequential -seeds 20) <(/tmp/banditsim compare -seeds 20) && echo "identical output"
+identical output
