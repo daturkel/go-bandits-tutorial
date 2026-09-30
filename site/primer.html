@@ -71,6 +71,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
   <li><code>go vet ./...</code> finds suspicious code the compiler accepts.</li>
   <li><code>go test ./...</code> runs the tests. Section 7 shows one.</li>
 </ul>
+<p>In <code>./...</code>, the <code>...</code> is a wildcard, like <code>*</code> in a shell glob, and has nothing to do with <code>..</code> (the parent directory). It means "this directory and every package below it", so <code>go test ./...</code> tests the whole project, while <code>go test .</code> tests only the current directory and <code>go test ./bandit</code> only that one package. Directories starting with <code>_</code> or <code>.</code>, and <code>testdata</code>, are skipped.</p>
 
 <h2 id="2-values-and-types">2. Values and types</h2>
 <figure class="code">
