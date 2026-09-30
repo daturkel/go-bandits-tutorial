@@ -7,7 +7,7 @@ name: Pages
 
 on:
   push:
-    branches: [main, ccr-03f48ce0-rbfvks]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
