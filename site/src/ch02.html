@@ -79,8 +79,14 @@
   <div class="ex-body">
 <!-- include: ch02/start/bandit/ucb1.go#UCB1.Select -->
     <p>Write it as the comment says. The tests set <code>counts</code>, <code>means</code> and <code>total</code> directly and then call <code>Select</code>, so it must read exactly those and change nothing. You will need <code>math.Sqrt</code> and <code>math.Log</code>, so add <code>import "math"</code>. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
-    <details class="answer"><summary>Hint</summary>
-    <p>Two loops: the first returns the first arm with a zero count; the second keeps the best score so far (start it at <code>math.Inf(-1)</code>, negative infinity) and the index that produced it. <code>range p.counts</code> gives you <code>arm, n</code> for each arm.</p>
+    <details class="answer"><summary>Hint 1: the shape</summary>
+    <p>Two passes over the arms. The first handles arms that have never been pulled, since the formula divides by the count. The second picks the best score.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the loops</summary>
+    <p>The first loop returns the first arm whose count is zero. The second keeps the best score so far (start it at <code>math.Inf(-1)</code>, negative infinity) and the index that produced it, replacing them only when a score is strictly larger. <code>for arm, n := range p.counts</code> gives you each arm and its count.</p>
+    </details>
+    <details class="answer"><summary>Hint 3: the score</summary>
+    <p>Inside the second loop: <code>score := p.means[arm] + math.Sqrt(2*math.Log(float64(p.total))/float64(n))</code>. <code>p.total</code> and <code>n</code> are integers, so both need <code>float64(...)</code> before they go into <code>math.Log</code> and the division.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/ucb1.go#UCB1.Select -->

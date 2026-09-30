@@ -68,8 +68,11 @@
   <div class="ex-body">
 <!-- include: ch01/start/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
     <p>Give <code>Env</code> two fields, the probabilities and the generator. <code>NewEnv</code> fills them in and returns a pointer. <code>NumArms</code> and <code>Prob</code> read them. One requirement is not obvious: if the caller changes the slice they passed in afterwards, the environment must not change. Run <code>go test -run 'NumArms|Copies' ./bandit</code>.</p>
-    <details class="answer"><summary>Hint</summary>
-    <p>A slice is a small header onto an array, so assigning one shares the elements. The <code>slices</code> package has a function that makes an independent copy; add <code>"slices"</code> to the imports.</p>
+    <details class="answer"><summary>Hint 1: the fields</summary>
+    <p>Two fields are enough: the probabilities, a <code>[]float64</code>, and the generator, a <code>*rand.Rand</code>. <code>NumArms</code> is the length of the first, and <code>Prob</code> indexes it.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the copy</summary>
+    <p>A slice is a small header onto an array, so assigning one shares the elements. The <code>slices</code> package has a function that makes an independent copy; add <code>"slices"</code> to the imports and use it in the constructor.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
@@ -158,8 +161,14 @@
   <div class="ex-body">
 <!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
     <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random. The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. The tests set <code>p.values</code> directly and then call <code>greedy</code>, so decide from <code>p.values</code> alone. Run <code>go test -run Greedy ./bandit</code>.</p>
-    <details class="answer"><summary>Hint</summary>
-    <p>Walk the means, keeping the best index so far and how many arms have tied with it. When you meet an equal value, that makes one more tied arm, and the new arm should replace the current pick with probability 1 out of the number of ties so far, so every tied arm ends up equally likely. <code>p.rng.IntN(ties) == 0</code> is that coin. A better value resets the tie count to 1. A <code>switch</code> with conditions and no value reads well here.</p>
+    <details class="answer"><summary>Hint 1: the shape</summary>
+    <p>One pass over <code>p.values</code>, remembering the best index so far. Start with arm 0 as the best. Then think about what should happen when two values are exactly equal.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the idea</summary>
+    <p>Also remember how many arms have tied with the current best. When you meet another equal value, that is one more tied arm, and it should replace the current pick with probability 1 out of the number of ties so far. Then every tied arm ends up equally likely, and you never need a list of them. A better value starts a new count at 1.</p>
+    </details>
+    <details class="answer"><summary>Hint 3: nearly the code</summary>
+    <p>Start with <code>best, ties := 0, 1</code> and loop <code>for i := 1; i &lt; len(p.values); i++</code>. Inside, a <code>switch</code> with conditions and no value has two cases: a strictly larger value sets <code>best, ties = i, 1</code>; an equal one does <code>ties++</code> and then <code>if p.rng.IntN(ties) == 0 { best = i }</code>. Return <code>best</code>.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
@@ -190,8 +199,14 @@
   <div class="ex-body">
 <!-- include: ch01/start/bandit/sim.go#Run -->
     <p>Write the loop. In each step: ask the policy for an arm, pull it, tell the policy what happened, and update the result. <code>res</code> needs its two slices allocated before you use them, with <code>make</code>. <code>for t := range steps</code> counts <code>t</code> from 0 to <code>steps-1</code>. Run <code>go test ./bandit</code>; when the last test passes, every task is done.</p>
-    <details class="answer"><summary>Hint</summary>
-    <p>Get the best probability once, before the loop, with <code>_, bestP := env.Best()</code>. The blank identifier <code>_</code> discards a return value you do not need. Then, per step: <code>arm := pol.Select()</code>, <code>reward := env.Pull(arm)</code>, <code>pol.Update(arm, reward)</code>, and the bookkeeping.</p>
+    <details class="answer"><summary>Hint 1: the shape</summary>
+    <p>Set up before the loop, then one loop with the same three calls every time: choose, observe, learn. The result's bookkeeping happens after those calls, inside the loop.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the set-up</summary>
+    <p>You need the best probability once: <code>_, bestP := env.Best()</code>. The blank identifier <code>_</code> discards a return value you do not need. Build <code>res</code> with <code>Steps</code> set and the two slices allocated: <code>RegretCurve</code> with <code>make([]float64, steps)</code> and <code>Pulls</code> with <code>make([]int, env.NumArms())</code>.</p>
+    </details>
+    <details class="answer"><summary>Hint 3: the loop body</summary>
+    <p><code>arm := pol.Select()</code>, then <code>reward := env.Pull(arm)</code>, then <code>pol.Update(arm, reward)</code>. After that: add the reward to <code>res.TotalReward</code>; add <code>bestP - env.Prob(arm)</code> to <code>res.Regret</code>; store the running <code>res.Regret</code> in <code>res.RegretCurve[t]</code>; count the pull in <code>res.Pulls[arm]</code>. Return <code>res</code> after the loop.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/sim.go#Run -->
