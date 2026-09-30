@@ -181,8 +181,13 @@ func chapterList(chapters []Chapter) string {
 			tag = "ready"
 		}
 		fmt.Fprintf(&sb, "<li class=\"%s %s\">", cls, tag)
-		inner := fmt.Sprintf(`<span class="reel" aria-hidden="true">%s</span><span class="card-body"><span class="card-title">%s</span><span class="card-sum">%s</span></span><span class="badge">%s</span>`,
-			c.Number(), html.EscapeString(c.Title), html.EscapeString(c.Summary), map[bool]string{true: "Ready", false: "Planned"}[c.Ready()])
+		// Only chapters that are not written yet get a badge.
+		badge := ""
+		if !c.Ready() {
+			badge = `<span class="badge">Planned</span>`
+		}
+		inner := fmt.Sprintf(`<span class="reel" aria-hidden="true">%s</span><span class="card-body"><span class="card-title">%s</span><span class="card-sum">%s</span></span>%s`,
+			c.Number(), html.EscapeString(c.Title), html.EscapeString(c.Summary), badge)
 		if c.Ready() {
 			fmt.Fprintf(&sb, `<a href="%s">%s</a>`, c.File(), inner)
 		} else {
