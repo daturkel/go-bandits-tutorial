@@ -17,7 +17,7 @@
 <h2>How the chapters work</h2>
 <p>You do not type a whole project. Each chapter gives you a <strong>starter</strong>: the previous chapter's finished project (or, for chapter 1, a small one) with the interesting parts removed. Those parts are <strong>tasks</strong>, marked <code>TASK n</code> in the code. The page explains each one, you write it, and the tests tell you when it is right. Each task has a hint and an answer behind a click; try first. You never build on your own code from an earlier chapter, so a mistake in chapter 2 cannot make chapter 3 unworkable.</p>
 <ul>
-  <li>Get the starter with <code>tools/starter.sh ch01 work/banditlab</code>, then <code>cd work/banditlab</code>. You can also work in a copy anywhere.</li>
+  <li>Work in <code>starters/ch01</code>, in your clone of the repository, and edit the files there. To start over, <code>git restore starters/ch01</code>; to keep the original untouched, copy the folder somewhere else first.</li>
   <li>Run <code>go test ./...</code> whenever you like. At first the tests for the missing pieces fail; your job is to make them pass.</li>
   <li>The code that is <em>not</em> a task is shown on the page and explained, but you do not need to type it.</li>
   <li>At the end of the chapter there is more practice, in separate small files that do not touch the project.</li>
@@ -202,37 +202,40 @@
   <li><code>go run . -scenario spread -steps 100000</code>. Which arms get most of the pulls?</li>
 </ul>
 
-<h2>More practice</h2>
-<p>Three small self-contained exercises, in <code>exercises/ch01</code>. They do not touch your project; each is a stub with tests. Do them now or come back later.</p>
+<h2>Extra tasks</h2>
+<p>Three more, in the same project: <code>starters/ch01/bandit/extras.go</code>. Nothing else uses them, so do them now or come back later. Their tests are in <code>extras_test.go</code> and fail until you write them.</p>
 
 <details class="exercise">
-  <summary>1. Empirical rates (zero values)</summary>
+  <summary>Extra 1: empirical rates (zero values)</summary>
   <div class="ex-body">
-    <p>Implement <code>EmpiricalRates(wins, losses []int) ([]float64, bool)</code> in <code>exercises/ch01/ex1</code>. It returns each arm's success rate; an arm that was never pulled has rate 0, not NaN. If the two slices differ in length, return <code>nil, false</code>.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch01/ex1/reference/rates.go#EmpiricalRates -->
+<!-- include: starters/ch01/bandit/extras.go#EmpiricalRates -->
+    <p>Return each arm's success rate, <code>wins[i] / (wins[i] + losses[i])</code>. An arm that was never pulled has rate 0, not NaN. If the two slices differ in length, return <code>nil, false</code>.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/extras.go#EmpiricalRates -->
     <p>Checking <code>n &gt; 0</code> before dividing is what prevents NaN. <code>rates</code> starts out zeroed, so the never-pulled case needs no code at all: not assigning is the answer.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>2. Reading the regret curve (maps and comma-ok)</summary>
+  <summary>Extra 2: reading the regret curve (maps and comma-ok)</summary>
   <div class="ex-body">
-    <p>Implement <code>RegretAt(curve []float64, marks []int) (map[int]float64, bool)</code> in <code>exercises/ch01/ex2</code>. Given the per-step regret curve and a list of step counts (1-based, like the milestones <code>main</code> prints), return a map from each mark to its regret. If any mark is out of range, return <code>nil, false</code>.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch01/ex2/reference/regretat.go#RegretAt -->
+<!-- include: starters/ch01/bandit/extras.go#RegretAt -->
+    <p>Given the per-step regret curve and a list of step counts (1-based, like the milestones <code>main</code> prints), return a map from each mark to its regret. If any mark is out of range, return <code>nil, false</code>.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/extras.go#RegretAt -->
     <p>The map is created with <code>make</code> and a size hint. Reading the mark <code>m</code> as a one-based index means subtracting one, which is the classic off-by-one; the test pins it down.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>3. Decaying epsilon</summary>
+  <summary>Extra 3: decaying epsilon</summary>
   <div class="ex-body">
-    <p>Fixed ε keeps wasting pulls long after the best arm is obvious. Implement <code>Epsilon(t int, start, floor, halfLife float64) float64</code> in <code>exercises/ch01/ex3</code>: an exploration rate that halves every <code>halfLife</code> steps but never drops below <code>floor</code>. Then, as an extension with no provided test, make <code>EpsilonGreedy.Select</code> use it and compare regret on the <code>easy</code> scenario.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch01/ex3/reference/decay.go#Epsilon -->
+<!-- include: starters/ch01/bandit/extras.go#DecayedEpsilon -->
+    <p>Fixed ε keeps wasting pulls long after the best arm is obvious. Write the function the comment describes: an exploration rate that halves every <code>halfLife</code> steps but never drops below <code>floor</code>. Then, as an extension with no provided test, make <code>EpsilonGreedy.Select</code> use it and compare regret on the <code>easy</code> scenario.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/extras.go#DecayedEpsilon -->
     <p><code>math.Pow</code> and <code>math.Max</code> operate on <code>float64</code> only, so the step count is converted explicitly: Go never converts between numeric types implicitly, even <code>int</code> to <code>float64</code>.</p>
     </details>
   </div>

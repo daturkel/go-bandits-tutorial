@@ -1,0 +1,61 @@
+package bandit
+
+// RoundRobin pulls arm 0, 1, ..., n-1, 0, 1, ... and ignores rewards. It is a
+// useful baseline: any learning policy should beat it.
+type RoundRobin struct {
+	// TASK E1: add the state you need.
+}
+
+// NewRoundRobin returns a RoundRobin for nArms arms.
+func NewRoundRobin(nArms int) *RoundRobin {
+	return &RoundRobin{}
+}
+
+// Name returns "round-robin".
+func (r *RoundRobin) Name() string { return "" }
+
+// Select returns the next arm in the cycle.
+func (r *RoundRobin) Select() int { return 0 }
+
+// Update does nothing: round-robin does not learn.
+func (r *RoundRobin) Update(arm int, reward float64) {}
+
+// Logged wraps a Policy and records every call in Log, as "select 2" and
+// "update 1 1" (arm, then reward printed with %g). Everything else is
+// delegated to the wrapped policy unchanged.
+type Logged struct {
+	Policy // embedded: Name, Select and Update are promoted from it
+	Log    []string
+}
+
+// NewLogged wraps p.
+func NewLogged(p Policy) *Logged { return &Logged{Policy: p} }
+
+// TASK E2: override Select and Update so they record to Log and then call the
+// embedded policy. Name needs no code: it is promoted.
+
+// Tally counts pulls per arm and in total.
+//
+// TASK E3: it has a bug. The test fails even though every method looks
+// reasonable. Find it and fix it. Do not change the tests.
+type Tally struct {
+	counts []int
+	total  int
+}
+
+// NewTally returns a Tally for nArms arms.
+func NewTally(nArms int) Tally {
+	return Tally{counts: make([]int, nArms)}
+}
+
+// Add records one pull of arm.
+func (t Tally) Add(arm int) {
+	t.counts[arm]++
+	t.total++
+}
+
+// Total returns the number of pulls recorded.
+func (t Tally) Total() int { return t.total }
+
+// Count returns the number of pulls of arm.
+func (t Tally) Count(arm int) int { return t.counts[arm] }

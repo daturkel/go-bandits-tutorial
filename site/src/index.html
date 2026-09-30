@@ -1,20 +1,21 @@
 <section class="index-hero">
   <p class="kicker"><span class="reel" aria-hidden="true">Go</span> A hands-on course</p>
   <h1>Learn Go by building a <em>bandit</em> service</h1>
-  <p class="lede">One project, fourteen chapters. It starts as a command-line simulation of a multi-armed bandit and grows into replicated gRPC microservices, picking up the language and the backend patterns exactly when the project needs them.</p>
+  <p class="lede">One project, fourteen chapters and a capstone, with a short primer to start. It starts as a command-line simulation of a multi-armed bandit and grows into replicated gRPC microservices, picking up the language and the backend patterns exactly when the project needs them.</p>
 </section>
 
 <h2>How the course works</h2>
 <p>A multi-armed bandit repeatedly chooses one of several options (an ad, a model variant, a ranking), observes a reward, and has to balance trying things it is unsure about against repeating what already works. That decision loop is small enough to fit in a few hundred lines and rich enough to need everything a Go backend uses: interfaces, testing, concurrency, HTTP, persistence, metrics, and finally state that has to stay consistent across replicas.</p>
 <ul>
+  <li><strong>You write the interesting parts.</strong> Each chapter has a starter project in <code>starters/chNN</code>: the last chapter's finished project with the key pieces removed. The page explains the tasks in order, the tests tell you when a task is done, and hints and answers sit behind a click. (Chapters 1 and 2 use this format so far; the rest are still being converted and ask you to build the project by following the listings.)</li>
   <li><strong>Every listing is real.</strong> Code on these pages is pulled from <code>solutions/chNN</code>, which compiles and passes <code>go test -race</code>. Terminal output comes from running it, with fixed seeds.</li>
   <li><strong>Each chapter is a complete snapshot.</strong> <code>cd solutions/ch05 &amp;&amp; go test -race ./...</code> works without anything else. Lines a chapter adds are marked in the margin of its listings.</li>
-  <li><strong>Exercises have tests.</strong> Each chapter ships starters in <code>exercises/chNN</code> that fail until you implement them; reference answers sit under a fold on the page.</li>
+  <li><strong>Everything has tests.</strong> Tasks and exercises come with tests that fail until you implement them; reference answers sit under a fold on the page.</li>
 </ul>
 <p>You need Go 1.27 or newer. Start with <!-- first-chapter -->, or read <a href="../README.md">the README</a> for how to run any chapter.</p>
 
-<h2>What you will have after chapter 4</h2>
-<p>A simulator that compares bandit policies over many random seeds, with its results drawn by the code you wrote. This chart is its actual output; the later chapters put the same policies behind an HTTP service, then behind several replicas that have to agree.</p>
+<h2>What the code produces</h2>
+<p>The first chart in the course comes from chapter 4's simulator, which compares bandit policies over many random seeds and draws its own results. This is its actual output. Everything after it puts the same policies behind an HTTP service, then behind several replicas that have to agree.</p>
 <!-- svg: ch04/regret-needle.svg caption="Cumulative regret of four policies on a ten-arm problem, mean of 100 seeds (generated in chapter 4)." -->
 
 <!-- chapters -->

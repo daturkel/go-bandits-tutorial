@@ -12,7 +12,7 @@
 </ul>
 
 <h2>Your starter</h2>
-<p>Get it with <code>tools/starter.sh ch02 work/banditlab</code>. It is chapter 1's finished project, with one refactoring already done for you (the shared bookkeeping, step 2 below) and three tasks left. Try the tests:</p>
+<p>Work in <code>starters/ch02</code>. It is chapter 1's finished project, with one refactoring already done for you (the shared bookkeeping, step 2 below) and three tasks left. Try the tests:</p>
 <!-- transcript: ch02/starter-tests -->
 <p>Those errors are the first job. <code>Run</code> in <code>sim.go</code> now takes a <code>Policy</code> instead of a specific policy type, but nothing says yet what a <code>Policy</code> is.</p>
 
@@ -129,38 +129,41 @@
   <li>Change <code>Select</code> in UCB1 to use <code>&gt;=</code> instead of <code>&gt;</code> in the comparison. Which test fails, and why?</li>
 </ul>
 
-<h2>More practice</h2>
-<p>Three small self-contained exercises, in <code>exercises/ch02</code>, that do not touch your project.</p>
+<h2>Extra tasks</h2>
+<p>Three more, in the same project: <code>starters/ch02/bandit/extras.go</code>, with tests in <code>extras_test.go</code>. Nothing else uses them, so do them now or come back later. They are the practice for this chapter's ideas: implementing an interface, embedding, and receivers.</p>
 
 <details class="exercise">
-  <summary>1. A round-robin baseline</summary>
+  <summary>Extra 1: a round-robin baseline</summary>
   <div class="ex-body">
-    <p>Implement <code>RoundRobin</code> in <code>exercises/ch02/ex1</code>: a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Add a compile-time assertion that it satisfies <code>Policy</code> (the test already has one; you should know why it is there).</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch02/ex1/reference/policy.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
-    <p>The receiver is a pointer because <code>Select</code> advances <code>next</code>. The modulo keeps the cycle in range without a branch.</p>
+<!-- include: starters/ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
+    <p>Make <code>RoundRobin</code> a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Any learning policy should beat this baseline. The test has a compile-time assertion that <code>*RoundRobin</code> satisfies <code>Policy</code>; you should know why it is there.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
+    <p>The receiver is a pointer because <code>Select</code> advances <code>next</code>. The modulo keeps the cycle in range without a branch. It is not added to <code>NewPolicy</code>: the tests that loop over <code>PolicyNames()</code> expect policies that learn.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>2. A logging wrapper via embedding</summary>
+  <summary>Extra 2: a logging wrapper via embedding</summary>
   <div class="ex-body">
-    <p>In <code>exercises/ch02/ex2</code>, <code>Logged</code> embeds a <code>Policy</code>. Make it record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines to its <code>Log</code> while still delegating to the wrapped policy. You should not need to write <code>Name</code>.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch02/ex2/reference/logged.go#Logged,Logged.Select,Logged.Update -->
-    <p>Defining <code>Select</code> and <code>Update</code> on <code>*Logged</code> shadows the promoted ones; the embedded policy is still reachable as <code>l.Policy</code>. <code>Name</code> is promoted unchanged. This is the decorator pattern. HTTP middleware in chapter 8 has the same shape.</p>
+<!-- include: starters/ch02/bandit/extras.go#Logged,NewLogged -->
+    <p><code>Logged</code> embeds a <code>Policy</code>, so it already has all three methods. Override <code>Select</code> and <code>Update</code> so they record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines in <code>Log</code> (arm, then reward printed with <code>%g</code>) and then call the embedded policy. <code>Name</code> needs no code.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch02/bandit/extras.go#Logged,NewLogged,Logged.Select,Logged.Update -->
+    <p>Inside an overriding method you reach the embedded value by its type name, <code>l.Policy.Select()</code>. Without that qualifier the method would call itself forever. The wrapper still satisfies <code>Policy</code>, so <code>Run</code> accepts it with no change: this is how middleware is built in Go.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>3. Find the bug (value receivers)</summary>
+  <summary>Extra 3: find the receiver bug</summary>
   <div class="ex-body">
-    <p><code>exercises/ch02/ex3</code> contains a <code>Tally</code> that miscounts. The test fails on <code>Total()</code> but <em>passes</em> on <code>Count()</code>. Explain why before fixing it, then fix it without editing the tests.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch02/ex3/reference/tally.go -->
-    <p>Every method had a value receiver, so each call worked on a copy of the struct. <code>counts</code> is a slice header pointing at one shared array, so <code>t.counts[arm]++</code> reached the original; <code>total</code> is a plain <code>int</code> inside the copy and its increment vanished. The fix is pointer receivers throughout, and returning <code>*Tally</code> from the constructor so the test's <code>Counter</code> interface variable holds a pointer.</p>
+<!-- include: starters/ch02/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
+    <p>The tests fail even though every method looks reasonable. Find the bug and fix it without changing the tests. It fails in an interesting way: one of the two checks passes.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch02/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
+    <p>The methods have value receivers, so each call works on a copy of the <code>Tally</code>. The slice inside the copy shares its array with the original, so <code>counts[arm]++</code> still lands; the <code>total</code> field is a plain integer, so <code>total++</code> changes the copy and is lost. Pointer receivers, and a constructor that returns a pointer, fix both. Once the methods have pointer receivers, only <code>*Tally</code> has them in its method set, which is why <code>NewTally</code> must return a pointer for the interface test to compile: the rule from step 3 again.</p>
     </details>
   </div>
 </details>

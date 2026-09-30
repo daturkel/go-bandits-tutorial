@@ -29,7 +29,7 @@ for ch in "${chapters[@]}"; do
   rm -rf "$tmp"
 
   # Files without TASK markers are copied through unchanged.
-  drift=$(cd "$start" && grep -rL 'TASK [0-9]' --include='*.go' . | grep -v '_test.go' | while read -r f; do
+  drift=$(cd "$start" && grep -rL 'TASK [0-9E]' --include='*.go' . | grep -v '_test.go' | while read -r f; do
     cmp -s "$start/$f" "$sol/$f" || echo "$f"; done)
   if [ -n "$drift" ]; then echo "FAIL $ch: starter files differ from the solution though they have no tasks: $drift"; status=1
   else echo "ok   $ch: files without tasks match the solution"; fi

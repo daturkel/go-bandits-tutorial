@@ -20,11 +20,10 @@ Start with the **primer** (`site/primer.html`): a short tour of the Go you need,
 **The new format (primer, chapters 1 and 2).** Each chapter comes with a starter project in `starters/chNN`: the previous chapter's finished project with the interesting parts removed. The page explains the tasks in order, marked `TASK n` in the code, and the tests fail until you write them. Tasks have a hint and an answer behind a click. The starter also contains code you do not write; the page shows and explains it.
 
 ```sh
-tools/starter.sh ch01 work/banditlab   # copy the starter; work/ is ignored by git
-cd work/banditlab && go test ./...     # see what is missing
+cd starters/ch01 && go test ./...      # see what is missing; edit the files in place
 ```
 
-Your own code is not carried from one chapter to the next: every chapter begins from a starter built on the reference solution to the last one. `tools/check_starters.sh` checks that each starter's tests fail, that the reference solution passes them, and that untouched files match.
+Your own code is not carried from one chapter to the next: every chapter begins from a starter built on the reference solution to the last one. Work directly in the starter folder; `git restore starters/ch01` starts it over. `tools/check_starters.sh` checks that each starter's tests fail, that the reference solution passes them, and that untouched files match.
 
 **The older format (chapters 3 to 14 and the capstone)** is still the original: build one project yourself, chapter by chapter. Type or copy each listing (highlighted lines are new; excerpts omit `package` and imports), then check your work against the chapter's reference tests:
 

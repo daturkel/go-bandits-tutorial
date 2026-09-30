@@ -28,7 +28,7 @@
 
 ## Deferred
 
-- **Convert chapters 3 to 14 and the capstone to the starter format** (primer, chapter 1 and chapter 2 are the pilot). Each needs a `starters/chNN` directory, in-flow tasks with tests, a rewritten page, and the "Go in this chapter" introduction; blanks should grow with the reader. Chapters 13 and 14 and the capstone are mostly infrastructure and would change least. Decide after reviewing the pilot. The old separate exercises are kept as "more practice" until then.
+- **Convert chapters 3 to 14 and the capstone to the starter format** (primer, chapter 1 and chapter 2 are the pilot). Each needs a `starters/chNN` directory, in-flow tasks with tests, a rewritten page, and the "Go in this chapter" introduction; blanks should grow with the reader. Chapters 13 and 14 and the capstone are mostly infrastructure and would change least. Decide after reviewing the pilot. The old separate exercises (still in exercises/chNN for chapters 3 to 14) should be folded into the project as extra tasks, the way chapters 1 and 2 now do.
 
 - **GitHub Actions CI** (not started). The Pages workflow only rebuilds the site and deploys it. A CI workflow should run on every push and pull request:
   - per chapter in `solutions/`: `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./...`, `go test -race ./...`, with a PostgreSQL service container and `BANDIT_TEST_DATABASE_URL` set so the database tests run instead of skipping;
