@@ -1,0 +1,3 @@
+$ cd _examples/otherapp && go build ./... 2>&1
+package otherapp
+	main.go:6:2: use of internal package banditlab/internal/bandit not allowed

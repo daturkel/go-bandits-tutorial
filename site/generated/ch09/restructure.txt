@@ -1,0 +1,12 @@
+$ mkdir -p internal cmd/banditsim cmd/banditd
+$ mv bandit harness pool stat server internal/
+$ mv main.go run.go compare.go main_test.go testdata cmd/banditsim/
+$ rm serve.go
+$ grep -rl 'banditlab/' --include='*.go' . | xargs sed -i -E 's|banditlab/(bandit\|harness\|pool\|stat\|server)"|banditlab/internal/\1"|'
+$ go list ./...
+banditlab/cmd/banditsim
+banditlab/internal/bandit
+banditlab/internal/harness
+banditlab/internal/pool
+banditlab/internal/server
+banditlab/internal/stat

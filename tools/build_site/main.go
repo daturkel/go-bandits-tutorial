@@ -86,6 +86,7 @@ func build(root string) error {
 			return err
 		}
 		b.shown = nil
+		b.moves = nil
 		body, err := b.expand(string(src), pd.Title)
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)

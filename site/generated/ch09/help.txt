@@ -1,0 +1,20 @@
+$ go run ./cmd/banditd -h 2>&1
+Usage of banditd:
+  -addr address
+    	listen address (env BANDIT_ADDR) (default "localhost:8080")
+  -arms int
+    	number of arms (env BANDIT_ARMS) (default 3)
+  -drain-delay duration
+    	how long to keep serving, reporting unhealthy, after a shutdown signal (env BANDIT_DRAIN_DELAY)
+  -log-format string
+    	text or json (env BANDIT_LOG_FORMAT) (default "text")
+  -log-level string
+    	debug, info, warn or error (env BANDIT_LOG_LEVEL) (default "info")
+  -policy spec
+    	policy spec: thompson, ucb1, epsgreedy[:eps] (env BANDIT_POLICY) (default "thompson")
+  -seed uint
+    	policy random seed (env BANDIT_SEED) (default 1)
+  -select-delay duration
+    	artificial latency for /select (env BANDIT_SELECT_DELAY)
+  -shutdown-grace duration
+    	time for in-flight requests to finish on shutdown (env BANDIT_SHUTDOWN_GRACE) (default 10s)

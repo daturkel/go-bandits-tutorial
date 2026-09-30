@@ -1,0 +1,24 @@
+$ go build -o /tmp/banditd ./cmd/banditd
+$ BIN=/tmp/banditd bash _examples/shutdown.sh
+=== 1. grace period long enough: the slow request finishes ===
+health before the signal:      200
+health during the drain delay: 503
+in-flight /select finished with status 200
+banditd exit status: 0
+level=INFO msg=listening service=banditd addr=127.0.0.1:8089 policy=thompson arms=3 select_delay=1s
+level=INFO msg=request service=banditd id=7IF7MPDSNDS6IPWMWCFIU44MBJ method=GET path=/healthz status=200 bytes=16 durati
+level=INFO msg=request service=banditd id=ASE5G35JJELKM7CSMJMUV2A6WZ method=GET path=/healthz status=200 bytes=16 durati
+level=INFO msg="shutting down" service=banditd drain_delay=500ms grace=5s
+level=INFO msg=request service=banditd id=JV2BOK4BZJMJAGQF7CA4QVFZEM method=GET path=/healthz status=503 bytes=22 durati
+level=INFO msg=request service=banditd id=GGEORA5EG5ZOU7TDGBPNDGQ6NR method=POST path=/select status=200 bytes=52 durati
+level=INFO msg="shutdown complete" service=banditd
+
+=== 2. grace period too short: the slow request is cut off ===
+in-flight /select: curl exit code 52 (52 = empty reply)
+banditd exit status: 1
+level=INFO msg=listening service=banditd addr=127.0.0.1:8089 policy=thompson arms=3 select_delay=3s
+level=INFO msg=request service=banditd id=EU6CP6AXQT4JI46EEJHK74NCB3 method=GET path=/healthz status=200 bytes=16 durati
+level=INFO msg="shutting down" service=banditd drain_delay=0s grace=300ms
+level=WARN msg="grace period expired, closing remaining connections" service=banditd
+level=INFO msg=request service=banditd id=TUAWOLVBRNFYHLQRQPX3LVZNX7 method=POST path=/select status=499 bytes=0 duratio
+banditd: shutdown: context deadline exceeded

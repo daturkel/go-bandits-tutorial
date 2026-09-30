@@ -138,5 +138,35 @@ ch08() {
   t ch08 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08; fi
+ch09() {
+  verify ch09
+  # The restructuring commands, run on a copy of the previous chapter's project.
+  local out="$ROOT/site/generated/ch09/restructure.txt" dir
+  mkdir -p "$(dirname "$out")"
+  dir=$(mktemp -d)
+  "$ROOT/tools/start.sh" ch08 "$dir/banditlab" > /dev/null
+  : > "$out"
+  for cmd in \
+    'mkdir -p internal cmd/banditsim cmd/banditd' \
+    'mv bandit harness pool stat server internal/' \
+    'mv main.go run.go compare.go main_test.go testdata cmd/banditsim/' \
+    'rm serve.go' \
+    "grep -rl 'banditlab/' --include='*.go' . | xargs sed -i -E 's|banditlab/(bandit\\|harness\\|pool\\|stat\\|server)\"|banditlab/internal/\\1\"|'" \
+    'go list ./...'; do
+    echo "\$ $cmd" >> "$out"
+    (cd "$dir/banditlab" && eval "$cmd") >> "$out" 2>&1
+  done
+  rm -rf "$dir"
+  echo "wrote ${out#$ROOT/}"
+
+  t ch09 layout "find . -name '*.go' -not -path './_examples/*' -not -name '*_test.go' | sort"
+  t ch09 help 'go run ./cmd/banditd -h 2>&1'
+  t ch09 slogdemo 'go run ./_examples/slogdemo'
+  t ch09 internal 'cd _examples/otherapp && go build ./... 2>&1'
+  t ch09 serve-tests 'go test -race -count=1 -v -run "TestServe" ./internal/server'
+  t ch09 shutdown 'go build -o /tmp/banditd ./cmd/banditd' 'BIN=/tmp/banditd bash _examples/shutdown.sh'
+  t ch09 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09; fi
 for c in "$@"; do "$c"; done

@@ -1,0 +1,15 @@
+$ go run ./_examples/slogdemo
+--- text handler ---
+level=INFO msg=request method=POST path=/select status=200
+level=WARN msg="slow request" duration_ms=1520.5
+level=INFO msg=selected request_id=abc123 arm=2
+level=INFO msg=config server.addr=:8080 server.arms=3
+level=ERROR msg="reward failed" err="file does not exist"
+level=INFO msg=done
+--- json handler ---
+{"level":"INFO","msg":"request","method":"POST","path":"/select","status":200}
+{"level":"WARN","msg":"slow request","duration_ms":1520.5}
+{"level":"INFO","msg":"selected","request_id":"abc123","arm":2}
+{"level":"INFO","msg":"config","server":{"addr":":8080","arms":3}}
+{"level":"ERROR","msg":"reward failed","err":"file does not exist"}
+{"level":"INFO","msg":"done"}

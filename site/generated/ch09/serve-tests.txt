@@ -1,0 +1,11 @@
+$ go test -race -count=1 -v -run "TestServe" ./internal/server
+=== RUN   TestServeDrainsInFlightRequests
+--- PASS: TestServeDrainsInFlightRequests (0.14s)
+=== RUN   TestServeGraceExpires
+--- PASS: TestServeGraceExpires (0.10s)
+=== RUN   TestServeDrainDelay
+--- PASS: TestServeDrainDelay (0.30s)
+=== RUN   TestServeIdleShutdownIsImmediate
+--- PASS: TestServeIdleShutdownIsImmediate (0.00s)
+PASS
+ok  	banditlab/internal/server	1.561s

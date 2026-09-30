@@ -21,13 +21,42 @@ import (
 //
 // The fragment after # selects declarations (Name or Type.Method) or a
 // `region: Name` ... `endregion: Name` block. lines=a-b selects raw lines.
-var markerRE = regexp.MustCompile(`<!--\s*(include|copy|transcript|svg):\s*(.*?)\s*-->`)
+var markerRE = regexp.MustCompile(`<!--\s*(include|copy|moved|transcript|svg):\s*(.*?)\s*-->`)
 
 type builder struct {
 	root     string // repository root
 	chapters []Chapter
 	shown    map[string]map[int]bool // file (relative to solutions/) -> lines displayed on the current page
 	names    map[string]bool         // identifiers the course has shown so far, across pages
+	moves    map[string]string       // new path prefix -> old path prefix, for the chapter being built
+}
+
+// registerMoves handles <!-- moved: chNN new/path=old/path ... -->. It tells
+// the diff and coverage logic that files under new/path used to live at
+// old/path in the previous chapter, so relocating a file does not make all of
+// its lines count as new. It must appear before the includes it affects.
+func (b *builder) registerMoves(spec string) (string, error) {
+	_, opts, err := parseArgs(spec)
+	if err != nil {
+		return "", err
+	}
+	b.moves = opts
+	return "", nil
+}
+
+// previousRel maps a path in the current chapter to where the same file lived
+// in the previous chapter.
+func (b *builder) previousRel(rel string) string {
+	best := ""
+	for newPrefix := range b.moves {
+		if (rel == newPrefix || strings.HasPrefix(rel, newPrefix+"/")) && len(newPrefix) > len(best) {
+			best = newPrefix
+		}
+	}
+	if best == "" {
+		return rel
+	}
+	return b.moves[best] + rel[len(best):]
 }
 
 func (b *builder) markShown(file string, from, to int) {
@@ -59,6 +88,8 @@ func (b *builder) expand(page string, chapterID string) (string, error) {
 			res, err = b.renderInclude(sub[2])
 		case "copy":
 			res, err = b.renderCopy(sub[2])
+		case "moved":
+			res, err = b.registerMoves(sub[2])
 		case "transcript":
 			res, err = b.renderTranscript(sub[2])
 		case "svg":
@@ -136,7 +167,7 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if _, ok := opts["diff"]; ok && !isExercise {
 		chDir, rel, _ := strings.Cut(file, "/")
 		if prev := previousChapter(chDir); prev != "" {
-			prevData, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(rel)))
+			prevData, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(b.previousRel(rel))))
 			if perr == nil {
 				added = addedLines(strings.Split(strings.TrimSuffix(string(prevData), "\n"), "\n"), lines)
 			} else {
@@ -508,7 +539,7 @@ func (b *builder) checkCoverage(chapterID string) error {
 			added[i] = true
 		}
 		if prev != "" {
-			if pd, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, rel)); perr == nil {
+			if pd, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(b.previousRel(filepath.ToSlash(rel))))); perr == nil {
 				added = addedLines(strings.Split(strings.TrimSuffix(string(pd), "\n"), "\n"), lines)
 			}
 		}

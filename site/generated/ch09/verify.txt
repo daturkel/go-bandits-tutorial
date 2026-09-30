@@ -1,0 +1,16 @@
+$ tools/check.sh ch09 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab/cmd/banditd	1.048s
+ok  	banditlab/cmd/banditsim	1.192s
+ok  	banditlab/internal/bandit	1.306s
+ok  	banditlab/internal/config	1.016s
+ok  	banditlab/internal/harness	1.236s
+ok  	banditlab/internal/logging	1.028s
+ok  	banditlab/internal/pool	1.105s
+ok  	banditlab/internal/server	1.783s
+ok  	banditlab/internal/stat	1.015s
+
+PASS: your project satisfies the ch09 tests

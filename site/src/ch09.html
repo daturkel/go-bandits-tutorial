@@ -1,0 +1,160 @@
+<h2>What you will build</h2>
+<p>The service becomes a proper daemon, <code>banditd</code>, separate from the <code>banditsim</code> command-line tool. You will reorganise the project into <code>cmd/</code> and <code>internal/</code>, read configuration from flags and environment variables with a clear order of precedence, set up structured logging that can switch between human-readable and JSON, and make the server stop cleanly: on SIGTERM or Ctrl-C it fails its health check, finishes the requests already in flight, and exits.</p>
+<p>None of this changes what the service does. It changes whether you can run it in a container, ship its logs to a collector, and deploy a new version without dropping requests, all of which chapter 14 depends on.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>The <code>cmd/</code> and <code>internal/</code> layout, and how the compiler enforces <code>internal</code></li>
+  <li>Configuration from flags and environment variables, with testable inputs</li>
+  <li><code>log/slog</code> handlers, levels, <code>With</code>, groups, and <code>ReplaceAttr</code></li>
+  <li>The functional options pattern</li>
+  <li>Signals: SIGINT and SIGTERM, and <code>signal.NotifyContext</code></li>
+  <li>Graceful shutdown with <code>http.Server.Shutdown</code>, grace periods, and drain delays</li>
+  <li><code>context.WithoutCancel</code></li>
+  <li>Exit codes, and a <code>main</code> that is a few lines long</li>
+</ul>
+
+<h2>Step 1: cmd/ and internal/</h2>
+<p>Until now the project has been flat: one <code>main</code> package at the root plus a directory per library package. That is fine for a single program, and it is the right way to start. It stops working when there are two programs (a simulator and a server) that share libraries, and when you want to say which packages other people may import.</p>
+<p>The conventional layout puts each executable in <code>cmd/&lt;name&gt;/</code> and everything else under <code>internal/</code>. Run these from the root of your project:</p>
+<!-- moved: ch09 internal/bandit=bandit internal/harness=harness internal/pool=pool internal/stat=stat internal/server=server cmd/banditsim/main.go=main.go cmd/banditsim/run.go=run.go cmd/banditsim/compare.go=compare.go -->
+<!-- transcript: ch09/restructure -->
+<p>The <code>sed</code> command rewrites import paths such as <code>"banditlab/bandit"</code> to <code>"banditlab/internal/bandit"</code>. <code>serve.go</code> is deleted because the server gets its own program below, and you also need to delete the <code>serve</code> case (and its usage text) from <code>cmd/banditsim/main.go</code>. Your tests moved with their packages, and the reference tests for this chapter are at the new paths.</p>
+<!-- include: ch09/cmd/banditsim/main.go#usage,run diff -->
+<p>The finished layout, non-test files only:</p>
+<!-- transcript: ch09/layout -->
+<p>Each directory under <code>cmd/</code> is a <code>package main</code> that builds into a binary named after the directory: <code>go build ./cmd/banditd</code> produces <code>banditd</code>. The packages under <code>internal/</code> are libraries.</p>
+
+<h3>What internal means</h3>
+<p>A package whose path contains an <code>internal</code> element can only be imported by code in the tree rooted at the <em>parent</em> of that directory. Here that is everything in this module, and nothing else. The compiler enforces it, so other modules cannot depend on your implementation details and you can change them freely. To see it, here is a second module that tries:</p>
+<!-- include: ch09/_examples/otherapp/go.mod title="_examples/otherapp/go.mod" -->
+<!-- include: ch09/_examples/otherapp/main.go title="_examples/otherapp/main.go" -->
+<!-- transcript: ch09/internal -->
+<p>The <code>replace</code> directive points the dependency at the local copy of the project. Python has only a convention here (a leading underscore), which nothing enforces. In Go this is a build error.</p>
+<div class="callout why"><p class="callout-title">Why Go does it this way</p>
+<p>Anything exported from a public package becomes a promise: someone will depend on it. <code>internal/</code> lets a library or service keep its packages exported <em>within</em> the project, so its own programs and tests can share them, without promising them to the world. Do not over-apply it. A small project can stay flat, and directories named <code>pkg/</code>, <code>util/</code> or <code>common/</code> are usually a sign that packages are being named for what they are (a bucket) rather than what they do. Names like <code>bandit</code>, <code>server</code> and <code>config</code> say what a package is for.</p></div>
+
+<h2>Step 2: configuration</h2>
+<p>A service needs settings: where to listen, which policy, how many arms, how loudly to log. Two sources are worth supporting. Flags are convenient at a terminal; environment variables are how containers and process managers configure programs, and they keep settings out of shell history and image contents. Supporting both raises the question of which wins, and the answer here is the usual one: <strong>a flag beats an environment variable, which beats the default</strong>.</p>
+<!-- include: ch09/internal/config/config.go -->
+<p>How it works:</p>
+<ul>
+  <li>Each environment variable supplies the <em>default</em> of its flag: <code>fs.IntVar(&amp;cfg.Arms, "arms", env.int("BANDIT_ARMS", 3), ...)</code>. If the flag is given it overwrites the value; if not, the environment (or built-in) default stands. The <code>-h</code> output therefore shows the effective defaults.</li>
+  <li><strong><code>getenv</code> is a parameter.</strong> Calling <code>os.Getenv</code> directly would make every test depend on, and modify, the real process environment. Passing the function makes the environment an input, and the tests use a map. Anything you would otherwise read from global state (the clock, the environment, random numbers) is easier to test when passed in.</li>
+  <li><strong>All problems are reported at once</strong>, as in chapter 3: a bad <code>BANDIT_SEED</code> and a bad <code>-arms</code> appear in one message, each naming the variable and value. Invalid input from any source wraps the sentinel <code>ErrInvalid</code>, so <code>main</code> can choose exit status 2 for it.</li>
+  <li><code>slog.Level</code> parses itself: <code>LogLevel.UnmarshalText</code> accepts <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>.</li>
+  <li>Flag descriptions written with backticks (<code>`address`</code>) tell the <code>flag</code> package what to call the value in the help text.</li>
+</ul>
+<!-- transcript: ch09/help -->
+
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p>This is what <code>argparse</code> plus <code>os.environ</code>, or pydantic-settings, does in a Python service. Go has nothing built in that merges the two, and this package is deliberately small, around 130 lines with no dependencies. Third-party libraries (viper, envconfig, kong) exist; the case for them is a large configuration surface, config files, or hot reload. For a dozen settings, plain code is easier to read and to test.</p>
+</aside>
+
+<h2>Step 3: structured logging</h2>
+<p>Chapter 8 used <code>slog</code> as a logger. Here is more of what it can do. A record has a level, a message, and key-value attributes, and a <strong>handler</strong> decides how it is written. The same calls produce different output through different handlers:</p>
+<!-- include: ch09/_examples/slogdemo/main.go title="_examples/slogdemo/main.go" -->
+<!-- transcript: ch09/slogdemo -->
+<ul>
+  <li><strong>Text vs. JSON.</strong> Text (<code>key=value</code>) is pleasant at a terminal. JSON is what log collectors parse without regular expressions. The program's code is identical; only the handler changes.</li>
+  <li><strong>Levels</strong> filter: the <code>Debug</code> record was dropped because the default minimum is <code>Info</code>.</li>
+  <li><strong><code>With</code></strong> returns a logger that carries extra attributes on every record it writes, which is how a request-scoped logger keeps its ID, and how the daemon stamps everything with <code>service=banditd</code>.</li>
+  <li><strong>Groups</strong> nest related attributes: <code>server.addr</code> in text, an object in JSON.</li>
+  <li><strong><code>ReplaceAttr</code></strong> is a hook that sees every attribute just before it is written. Here it drops the timestamp so the demo's output is stable; exercise 2 uses it to hide secrets.</li>
+  <li>Prefer attributes over formatted messages: <code>log.Info("request", "status", 200)</code>, not <code>log.Info(fmt.Sprintf("request status=%d", 200))</code>. The first can be filtered and aggregated by field.</li>
+</ul>
+<p>The project's own logger construction is short:</p>
+<!-- include: ch09/internal/logging/logging.go -->
+
+<h2>Step 4: options, a delay, and a draining flag</h2>
+<p>Two small additions to the server support the rest of the chapter. First, <code>New</code> gains optional settings. The idiom for that in Go is <strong>functional options</strong>: each option is a function that adjusts the value being built, and the constructor takes a variable number of them.</p>
+<!-- include: ch09/internal/server/server.go#Server,Option,WithSelectDelay,New,Server.SetDraining diff -->
+<p>Callers that need nothing write <code>server.New(pol, log)</code>, as before; a caller that does writes <code>server.New(pol, log, server.WithSelectDelay(time.Second))</code>. New options can be added later without changing any existing call, and each option documents itself by name, which a long list of positional parameters or a config struct with many zero-value fields does not.</p>
+<p><code>WithSelectDelay</code> makes <code>/select</code> slow on purpose. A real policy may consult a model or a feature store and take tens of milliseconds, and a service with no slow requests is a poor place to test timeouts, shutdown, or load. The delay respects the request's context, so a client that gives up frees the handler immediately:</p>
+<!-- include: ch09/internal/server/server.go#Server.handleSelect diff -->
+<p><code>499</code> is not in the HTTP standard; nginx introduced it for "client closed request" and others adopted it. The response can never be delivered, but a log line saying 499 is more honest than one saying 200. The test <code>TestSelectStopsWhenClientHangsUp</code> cancels the request context and checks that the policy was never asked.</p>
+<p>Second, the server can mark itself as draining, after which the health check fails:</p>
+<!-- include: ch09/internal/server/server.go#Server.Handler,Server.handleHealth diff -->
+<p>The draining flag is an <code>atomic.Bool</code>, written by the shutdown code and read by concurrent requests, which is the case chapter 6 gave atomics for.</p>
+
+<h2>Step 5: graceful shutdown</h2>
+<p>Chapter 8's server stopped by calling <code>srv.Close()</code>, which drops every connection immediately, including requests in the middle of being answered. During a deploy or a scale-down, that turns into errors for real users. <strong>Graceful shutdown</strong> means: stop taking new work, finish the work in progress, then exit.</p>
+<p>Orchestrators do this in a standard sequence: send SIGTERM, wait some grace period, then send SIGKILL, which cannot be caught. The service's job is to finish before the SIGKILL. There is a subtlety with load balancers, too. A balancer learns that an instance is going away by failing its health check, and that takes a few seconds. If the instance stops listening at the instant it gets SIGTERM, requests the balancer sends in those seconds are refused. The fix is a <strong>drain delay</strong>: on SIGTERM, start failing the health check but keep accepting connections for a moment.</p>
+<!-- include: ch09/internal/server/serve.go -->
+<p>The sequence in <code>Serve</code>:</p>
+<ol>
+  <li>Serve until either the listener fails or <code>ctx</code> is cancelled (by a signal, in the daemon).</li>
+  <li>Call <code>OnShutdown</code> (the daemon passes <code>srv.SetDraining</code>) and wait <code>DrainDelay</code>, while still accepting requests.</li>
+  <li>Call <code>srv.Shutdown(ctx)</code>. It closes the listeners so no new connections arrive, closes idle keep-alive connections, and waits for active requests to complete, until its context ends.</li>
+  <li>If the <em>grace period</em> runs out first, <code>Shutdown</code> returns the context's error and leaves the stragglers running, so <code>Serve</code> calls <code>Close</code> to cut them off and returns an error wrapping <code>context.DeadlineExceeded</code>.</li>
+</ol>
+<p>One detail: the deadline for step 3 cannot come from <code>ctx</code>, since that context is exactly what was cancelled to start the shutdown, and a context derived from it would be dead on arrival. <code>context.WithoutCancel(ctx)</code> (Go 1.21) returns a context that keeps the parent's values but is never cancelled by it, and <code>WithTimeout</code> then adds the grace deadline.</p>
+<p>Tests hold a request open with a handler that blocks on a channel, and check each phase:</p>
+<!-- include: ch09/internal/server/serve_test.go#TestServeDrainsInFlightRequests,TestServeDrainDelay -->
+<!-- transcript: ch09/serve-tests -->
+
+<h2>Step 6: the daemon</h2>
+<p>With the pieces in place, <code>cmd/banditd</code> is short. <code>main</code> handles only what belongs to a process: signals and exit status. Everything else is in <code>run</code>, whose inputs are explicit so a test can call it.</p>
+<!-- include: ch09/cmd/banditd/main.go -->
+<ul>
+  <li><strong>SIGTERM</strong> is what Docker, Kubernetes, and systemd send to ask a process to stop; <strong>SIGINT</strong> is Ctrl-C. Handling both makes the daemon behave the same under a terminal and in a container. SIGKILL cannot be handled.</li>
+  <li>The small goroutine calls <code>stop()</code> after the first signal, which restores default signal handling. A second Ctrl-C therefore kills the process immediately, an escape hatch if a graceful shutdown hangs.</li>
+  <li>Exit status 2 is for configuration mistakes and 1 for runtime failure, the convention from chapter 3. A clean shutdown, and <code>-h</code>, exit 0.</li>
+</ul>
+<!-- include: ch09/cmd/banditd/run.go -->
+<p>Because <code>run</code> takes <code>getenv</code> and a log writer, the tests start the real program on a free port. One checks that JSON logs parse and carry the <code>service</code> attribute, that a request appears in them, and that cancelling the context ends with <code>run</code> returning nil and a "shutdown complete" record:</p>
+<!-- include: ch09/cmd/banditd/run_test.go#TestRunServesWithJSONLogsAndStopsCleanly -->
+
+<h2>Step 7: watch it stop</h2>
+<p>The script below starts the real binary twice with a deliberately slow <code>/select</code> (one second in the first run, three in the second) and sends SIGTERM while a request is in flight. Configuration goes in through environment variables, exactly as a container would supply it.</p>
+<!-- include: ch09/_examples/shutdown.sh title="_examples/shutdown.sh" -->
+<!-- transcript: ch09/shutdown -->
+<p>In the first run, the health check reads 200 before the signal and 503 during the drain delay, and the slow request still completes with 200 after the signal. The server exits 0, and its log shows the sequence: <code>shutting down</code>, the 503 health check, the finished request, <code>shutdown complete</code>.</p>
+<p>In the second run, the grace period (300 ms) is shorter than the request (3 s). The server warns, closes the connection, and exits 1 with the deadline error. The client sees an empty reply (curl exit code 52), and the handler notices the closed connection through its request context and logs the request as 499. If you set the grace period higher than your longest normal request, and lower than your orchestrator's kill timeout, this second case only happens when something is wrong.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch09/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory. The last command runs the simulator, which now lives under <code>cmd/</code>:</p>
+<!-- transcript: ch09/checkpoint -->
+<p>To run the daemon: <code>BANDIT_LOG_FORMAT=json go run ./cmd/banditd -policy ucb1</code>, then Ctrl-C.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch09</code>.</p>
+
+<details class="exercise">
+  <summary>1. Flag, environment, default</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/ch09/ex1</code>, implement <code>Load(args, getenv, stderr)</code> for a two-setting config: <code>-port</code> / <code>PORT</code> (default 8080) and <code>-debug</code> / <code>DEBUG</code> (default false). A flag beats the environment, which beats the default. An unparsable environment value must produce an error naming the variable; a port outside 1-65535 is an error from any source.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch09/ex1/reference/config.go#Load -->
+    <p>The environment is applied first, then the flags are parsed over the top, so the flag wins whenever it is present without extra bookkeeping. <code>flag.ContinueOnError</code> plus <code>SetOutput</code> turns bad flags into returned errors rather than an exit, which is what makes the function testable. The port range is checked <em>after</em> parsing so that it applies whichever source supplied the value.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. A logger that hides secrets</summary>
+  <div class="ex-body">
+    <p>Implement <code>NewRedactingLogger(w io.Writer, keys ...string) *slog.Logger</code> in <code>exercises/ch09/ex2</code>. It writes JSON, and any attribute whose key is in <code>keys</code> has its value replaced with <code>"[REDACTED]"</code>, including attributes inside groups and attributes added with <code>With</code>. Do not write a handler from scratch.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch09/ex2/reference/redact.go#NewRedactingLogger -->
+    <p><code>ReplaceAttr</code> is called for every attribute at write time, at any group depth, so one small function covers all three cases in the tests. Returning the attribute unchanged keeps everything else, including the built-in <code>time</code>, <code>level</code> and <code>msg</code>. Matching by key is a safety net, not a guarantee: a secret logged under a different key, or embedded in a message string, is not caught. The reliable defence is not to log secrets.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Shut a server down gracefully</summary>
+  <div class="ex-body">
+    <p>Implement <code>Shutdown(srv *http.Server, grace time.Duration) error</code> in <code>exercises/ch09/ex3</code>. It waits up to <code>grace</code> for in-flight requests; if they finish, it returns nil; if not, it closes the remaining connections and returns an error that wraps <code>context.DeadlineExceeded</code>.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch09/ex3/reference/shutdown.go#Shutdown -->
+    <p>The whole idea is two calls in the right order: <code>Shutdown</code> with a deadline, then <code>Close</code> if the deadline was hit. <code>Shutdown</code> does not abort stragglers when its context expires; it just stops waiting. Wrapping with <code>%w</code> keeps <code>errors.Is(err, context.DeadlineExceeded)</code> true for callers.</p>
+    </details>
+  </div>
+</details>
