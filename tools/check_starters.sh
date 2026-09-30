@@ -10,10 +10,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 status=0
 chapters=("$@")
 if [ ${#chapters[@]} -eq 0 ]; then
-  for d in "$ROOT"/starters/ch*; do chapters+=("$(basename "$d")"); done
+  for d in "$ROOT"/ch*/start; do chapters+=("$(basename "$(dirname "$d")")"); done
 fi
 for ch in "${chapters[@]}"; do
-  start="$ROOT/starters/$ch"; sol="$ROOT/solutions/$ch"
+  start="$ROOT/$ch/start"; sol="$ROOT/$ch/solution"
   if (cd "$start" && go test ./... > /dev/null 2>&1); then echo "FAIL $ch: the starter's tests already pass"; status=1
   else echo "ok   $ch: starter does not pass yet"; fi
 

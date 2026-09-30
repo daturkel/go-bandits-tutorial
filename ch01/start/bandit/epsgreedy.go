@@ -24,14 +24,14 @@ func NewEpsilonGreedy(nArms int, epsilon float64, rng *rand.Rand) *EpsilonGreedy
 
 // Select chooses the next arm to pull.
 func (p *EpsilonGreedy) Select() int {
-	// TASK 5: with probability p.Epsilon return a random arm, otherwise the
+	// TASK 7: with probability p.Epsilon return a random arm, otherwise the
 	// greedy one.
 	return 0
 }
 
 // greedy returns the arm with the highest mean, breaking ties uniformly at random.
 func (p *EpsilonGreedy) greedy() int {
-	// TASK 4: return the index of the largest value in p.values.
+	// TASK 6: return the index of the largest value in p.values.
 	// When several arms tie, pick one of them at random using p.rng.IntN(n),
 	// which returns a number from 0 to n-1. Picking the first would bias
 	// the very first pulls, when every mean is 0.
@@ -40,6 +40,6 @@ func (p *EpsilonGreedy) greedy() int {
 
 // Update folds an observed reward into the arm's running mean.
 func (p *EpsilonGreedy) Update(arm int, reward float64) {
-	// TASK 3: count the pull, then move the mean toward the reward:
+	// TASK 5: count the pull, then move the mean toward the reward:
 	//   mean += (reward - mean) / count
 }

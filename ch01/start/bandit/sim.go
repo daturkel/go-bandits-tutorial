@@ -15,7 +15,7 @@ type Result struct {
 // arm's probability and the pulled arm's probability, so lucky draws do not
 // hide bad decisions.
 func Run(env *Env, pol *EpsilonGreedy, steps int) Result {
-	// TASK 6: for each step, ask pol.Select() for an arm, pull it in env,
+	// TASK 8: for each step, ask pol.Select() for an arm, pull it in env,
 	// tell the policy with pol.Update(arm, reward), and record everything in
 	// the Result: TotalReward, Regret (add best - env.Prob(arm)),
 	// RegretCurve[t], and Pulls[arm]. Return the Result.

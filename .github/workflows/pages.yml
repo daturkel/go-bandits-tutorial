@@ -40,12 +40,16 @@ jobs:
           (cd tools/build_site && go run . ../..)
           git diff --exit-code -- site
 
-      # The pages link to ../solutions/... and ../exercises/..., so publish the
-      # repository layout, not only site/, and put a redirect at the root.
+      # The pages link to the source folders (ch01/solution, solutions/ch05,
+      # exercises/..., primer/...), so publish the repository layout, not only
+      # site/, and put a redirect at the root.
       - name: Assemble the site
         run: |
           mkdir _site
-          cp -r site solutions exercises README.md TODO.md _site/
+          cp -r site primer solutions exercises README.md TODO.md _site/
+          for d in ch[0-9][0-9]; do
+            if [ -d "$d" ]; then cp -r "$d" _site/; fi
+          done
           touch _site/.nojekyll   # Jekyll would drop directories that start with "_"
           echo '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=site/"><a href="site/">Learn Go by building a multi-armed bandit service</a>' > _site/index.html
 

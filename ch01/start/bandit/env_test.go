@@ -70,3 +70,15 @@ func TestNewEnvCopiesItsInput(t *testing.T) {
 		t.Errorf("changing the caller's slice changed the environment: Prob(0) = %v", env.Prob(0))
 	}
 }
+
+func TestNumArmsAndProb(t *testing.T) {
+	env := NewEnv([]float64{0.1, 0.9, 0.5}, NewRNG(1, StreamEnv))
+	if env.NumArms() != 3 {
+		t.Errorf("NumArms() = %d, want 3", env.NumArms())
+	}
+	for arm, want := range []float64{0.1, 0.9, 0.5} {
+		if got := env.Prob(arm); got != want {
+			t.Errorf("Prob(%d) = %v, want %v", arm, got, want)
+		}
+	}
+}

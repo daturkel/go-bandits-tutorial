@@ -10,7 +10,12 @@ set -u
 export TIMEFORMAT='real %2Rs, cpu %2Us'
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# t <chapter> <name> <commands...>: run each command in solutions/<chapter>.
+# soldir <chapter>: the chapter's reference solution, in either layout.
+soldir() {
+  if [ -d "$ROOT/$1/solution" ]; then echo "$ROOT/$1/solution"; else echo "$ROOT/solutions/$1"; fi
+}
+
+# t <chapter> <name> <commands...>: run each command in the chapter's solution.
 t() {
   local id=$1 name=$2; shift 2
   local out="$ROOT/site/generated/$id/$name.txt"
@@ -18,12 +23,12 @@ t() {
   : > "$out"
   for cmd in "$@"; do
     echo "\$ $cmd" >> "$out"
-    (cd "$ROOT/solutions/$id" && eval "$cmd") >> "$out" 2>&1
+    (cd "$(soldir "$id")" && eval "$cmd") >> "$out" 2>&1
   done
   echo "wrote ${out#$ROOT/}"
 }
 
-# ts <chapter> <name> <commands...>: run each command in starters/<chapter>.
+# ts <chapter> <name> <commands...>: run each command in <chapter>/start.
 ts() {
   local id=$1 name=$2; shift 2
   local out="$ROOT/site/generated/$id/$name.txt"
@@ -31,7 +36,7 @@ ts() {
   : > "$out"
   for cmd in "$@"; do
     echo "\$ $cmd" >> "$out"
-    (cd "$ROOT/starters/$id" && eval "$cmd") >> "$out" 2>&1
+    (cd "$ROOT/$id/start" && eval "$cmd") >> "$out" 2>&1
   done
   echo "wrote ${out#$ROOT/}"
 }

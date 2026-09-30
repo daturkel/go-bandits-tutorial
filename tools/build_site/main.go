@@ -28,9 +28,9 @@ type Chapter struct {
 	Summary string `json:"summary"`
 	Status  string `json:"status"` // ready | planned
 
-	// Starter marks a chapter whose reader works from starters/<id> (a
-	// partly finished project) instead of their own project from the last
-	// chapter. Start, if set, replaces the "Starting point" text.
+	// Starter marks a chapter whose reader works in <id>/start (a partly
+	// finished project) instead of their own project from the last chapter.
+	// Start, if set, replaces the "Starting point" text.
 	Starter bool   `json:"starter"`
 	Start   string `json:"start"`
 }

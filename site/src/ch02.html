@@ -12,11 +12,11 @@
 </ul>
 
 <h2>Your starter</h2>
-<p>Work in <code>starters/ch02</code>. It is chapter 1's finished project, with one refactoring already done for you (the shared bookkeeping, step 2 below) and three tasks left. Try the tests:</p>
+<p>Work in <code>ch02/start</code>. It is chapter 1's finished project, with one refactoring already done for you (the shared bookkeeping, under "Sharing bookkeeping with embedding" below) and three tasks left. Try the tests:</p>
 <!-- transcript: ch02/starter-tests -->
 <p>Those errors are the first job. <code>Run</code> in <code>sim.go</code> now takes a <code>Policy</code> instead of a specific policy type, but nothing says yet what a <code>Policy</code> is.</p>
 
-<h2>Step 1: the interface</h2>
+<h2>Interfaces: what a policy is</h2>
 <p>Chapter 1's <code>Run</code> took a <code>*EpsilonGreedy</code>. To run something else, the runner has to say what it <em>needs</em> from a policy, not which type it is. That change is already made in the starter; it is one word, plus a line that records the policy's name:</p>
 <!-- include: ch02/bandit/sim.go#Result,Run diff -->
 <p>An <strong>interface</strong> is a set of method signatures. Look at what <code>Run</code> calls on <code>pol</code>: <code>Name</code>, <code>Select</code> and <code>Update</code>. That list <em>is</em> the interface.</p>
@@ -24,7 +24,7 @@
 <details class="exercise" open>
   <summary>Task 1: define <code>Policy</code></summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/policy.go#Policy -->
+<!-- include: ch02/start/bandit/policy.go#Policy -->
     <p>Fill in the three methods. Their signatures are the ones <code>EpsilonGreedy</code> already has (<code>Select() int</code>, <code>Update(arm int, reward float64)</code>) plus <code>Name() string</code>, which the runner uses to label results. When the package compiles again, run the tests: the ones about policies still fail, and the next two tasks fix them.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/policy.go#Policy -->
@@ -41,7 +41,7 @@
 <p>Because satisfaction is implicit, a typo in a method name would only show up when you try to <em>use</em> the type as a <code>Policy</code>, possibly far from where you wrote it. A compile-time assertion catches it at the definition, and it is in the tests:</p>
 <!-- include: ch02/bandit/policy_test.go lines=10-14 -->
 
-<h2>Step 2: sharing bookkeeping with embedding</h2>
+<h2>Sharing bookkeeping with embedding</h2>
 <p>Every policy needs per-arm pull counts and running means. Rather than copy that into UCB1, the starter pulls it into a small type, which is given:</p>
 <!-- include: ch02/bandit/stats.go diff -->
 <p>and <code>EpsilonGreedy</code> <strong>embeds</strong> it: a field with a type but no name. Compare with chapter 1:</p>
@@ -50,7 +50,7 @@
 <p>Embedding <strong>promotes</strong> the embedded type's fields and methods, so <code>p.means</code>, <code>p.counts</code> and <code>p.Update(arm, r)</code> all work directly on an <code>EpsilonGreedy</code>. The type <code>armStats</code> starts with a lowercase letter, so it is invisible outside the package, but its <em>exported</em> method <code>Update</code> is still promoted onto the exported <code>EpsilonGreedy</code>, and callers can use it.</p>
 <p>It looks like inheritance, but it is composition: <code>armStats</code> is an ordinary field (it even has a name, <code>armStats</code>, that you can use to reach it), and the promoted method runs with <code>armStats</code> as its receiver. It cannot see the outer type, and there is no <code>super</code> and no virtual dispatch back into the outer type. If you need to override, you define a method with the same name on the outer type, as exercise 2 at the end does.</p>
 
-<h2>Step 3: value or pointer receivers</h2>
+<h2>Value or pointer receivers</h2>
 <p>So far every method has a pointer receiver, <code>(p *EpsilonGreedy)</code>. With interfaces in play the choice has a visible consequence. Before you run this program, decide whether you think it compiles:</p>
 <!-- include: ch02/_examples/valuereceiver.go title="_examples/valuereceiver.go" -->
 <p>Run it with <code>go run ./_examples</code>:</p>
@@ -68,7 +68,7 @@
 </aside>
 <p>Exercise 3 at the end hands you a value-receiver bug to fix. It is instructive because it is <em>partly</em> working: writes through a slice field survive the copy, while a plain <code>int</code> field silently does not.</p>
 
-<h2>Step 4: a second policy</h2>
+<h2>A second policy: UCB1</h2>
 <p>UCB1 ("upper confidence bound") is deterministic. After trying each arm once, it always pulls the arm with the highest optimistic estimate:</p>
 <p><em>score(a) = mean(a) + √(2 · ln t / n(a))</em></p>
 <p>where <em>t</em> is the total number of pulls and <em>n(a)</em> is how often arm <em>a</em> was pulled. The square-root term is a bonus that is large for an arm that has been tried rarely and shrinks as evidence accumulates, so exploration fades on its own; there is no ε to tune. Its type, constructor and name are given. It embeds the same <code>armStats</code>, so <code>Update</code> comes for free:</p>
@@ -77,7 +77,7 @@
 <details class="exercise" open>
   <summary>Task 2: <code>UCB1.Select</code></summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/ucb1.go#UCB1.Select -->
+<!-- include: ch02/start/bandit/ucb1.go#UCB1.Select -->
     <p>Write it as the comment says. You will need <code>math.Sqrt</code> and <code>math.Log</code>, so add <code>import "math"</code>. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Two loops: the first returns the first arm with a zero count; the second keeps the best score so far (start it at <code>math.Inf(-1)</code>, negative infinity) and the index that produced it. <code>range p.counts</code> gives you <code>arm, n</code> for each arm.</p>
@@ -89,14 +89,14 @@
   </div>
 </details>
 
-<h2>Step 5: choosing policies by name</h2>
+<h2>Choosing policies by name</h2>
 <p><code>main</code> should be able to build a policy from a string. A small factory function does that, and <code>PolicyNames</code>, which lists what it understands, is given:</p>
 <!-- include: ch02/bandit/policy.go#PolicyNames -->
 
 <details class="exercise" open>
   <summary>Task 3: <code>NewPolicy</code></summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/policy.go#NewPolicy -->
+<!-- include: ch02/start/bandit/policy.go#NewPolicy -->
     <p>A <code>switch</code> on <code>name</code>. The function returns the interface type, so callers get a <code>Policy</code> whichever branch ran. It also returns an <code>error</code>: return <code>nil</code> for it on success, and <code>fmt.Errorf("unknown policy %q", name)</code> for a name you do not know. Chapter 3 covers Go's error handling properly. Run the whole suite with <code>go test ./...</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>On failure, return a plain <code>nil</code> as the first value, not a typed nil such as <code>(*UCB1)(nil)</code>. The test checks this, and the answer explains why.</p>
@@ -108,7 +108,7 @@
   </div>
 </details>
 
-<h2>Step 6: the command line</h2>
+<h2>The command line</h2>
 <p><code>main.go</code> is given. It accepts a comma-separated list of policies, gives every policy its own identically seeded environment, and prints one row each:</p>
 <!-- include: ch02/main.go#main diff -->
 <!-- transcript: ch02/run -->
@@ -120,7 +120,7 @@
 <div class="checkpoint">
 <p>All tasks done: these succeed, and the last command should match the output below.</p>
 <!-- transcript: ch02/checkpoint -->
-<p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one. If you get stuck, <code>tools/start.sh ch02 somewhere-else</code> copies the finished chapter to compare with.</p>
+<p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one. If you get stuck, <code>ch02/solution</code> has the finished chapter to compare with.</p>
 </div>
 
 <h2>Try it</h2>
@@ -130,12 +130,12 @@
 </ul>
 
 <h2>Extra tasks</h2>
-<p>Three more, in the same project: <code>starters/ch02/bandit/extras.go</code>, with tests in <code>extras_test.go</code>. Nothing else uses them, so do them now or come back later. They are the practice for this chapter's ideas: implementing an interface, embedding, and receivers.</p>
+<p>Three more, in the same project: <code>ch02/start/bandit/extras.go</code>, with tests in <code>extras_test.go</code>. Nothing else uses them, so do them now or come back later. They are the practice for this chapter's ideas: implementing an interface, embedding, and receivers.</p>
 
 <details class="exercise">
   <summary>Extra 1: a round-robin baseline</summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
+<!-- include: ch02/start/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
     <p>Make <code>RoundRobin</code> a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Any learning policy should beat this baseline. The test has a compile-time assertion that <code>*RoundRobin</code> satisfies <code>Policy</code>; you should know why it is there.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
@@ -147,7 +147,7 @@
 <details class="exercise">
   <summary>Extra 2: a logging wrapper via embedding</summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/extras.go#Logged,NewLogged -->
+<!-- include: ch02/start/bandit/extras.go#Logged,NewLogged -->
     <p><code>Logged</code> embeds a <code>Policy</code>, so it already has all three methods. Override <code>Select</code> and <code>Update</code> so they record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines in <code>Log</code> (arm, then reward printed with <code>%g</code>) and then call the embedded policy. <code>Name</code> needs no code.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/extras.go#Logged,NewLogged,Logged.Select,Logged.Update -->
@@ -159,11 +159,11 @@
 <details class="exercise">
   <summary>Extra 3: find the receiver bug</summary>
   <div class="ex-body">
-<!-- include: starters/ch02/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
+<!-- include: ch02/start/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
     <p>The tests fail even though every method looks reasonable. Find the bug and fix it without changing the tests. It fails in an interesting way: one of the two checks passes.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
-    <p>The methods have value receivers, so each call works on a copy of the <code>Tally</code>. The slice inside the copy shares its array with the original, so <code>counts[arm]++</code> still lands; the <code>total</code> field is a plain integer, so <code>total++</code> changes the copy and is lost. Pointer receivers, and a constructor that returns a pointer, fix both. Once the methods have pointer receivers, only <code>*Tally</code> has them in its method set, which is why <code>NewTally</code> must return a pointer for the interface test to compile: the rule from step 3 again.</p>
+    <p>The methods have value receivers, so each call works on a copy of the <code>Tally</code>. The slice inside the copy shares its array with the original, so <code>counts[arm]++</code> still lands; the <code>total</code> field is a plain integer, so <code>total++</code> changes the copy and is lost. Pointer receivers, and a constructor that returns a pointer, fix both. Once the methods have pointer receivers, only <code>*Tally</code> has them in its method set, which is why <code>NewTally</code> must return a pointer for the interface test to compile: the rule from the receivers section again.</p>
     </details>
   </div>
 </details>

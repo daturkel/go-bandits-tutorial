@@ -146,14 +146,14 @@ func (b *builder) renderInclude(spec string) (string, error) {
 		return "", err
 	}
 	file, frag, _ := strings.Cut(target, "#")
-	// Paths under exercises/ are relative to the repository root; everything
-	// else is relative to solutions/.
-	isExercise := strings.HasPrefix(file, "exercises/") || strings.HasPrefix(file, "starters/") || strings.HasPrefix(file, "primer/")
-	base := filepath.Join(b.root, "solutions")
-	if isExercise {
-		base = b.root
+	// Paths under exercises/, primer/ and chNN/start/ are relative to the
+	// repository root and never count as "shown" for the coverage check;
+	// anything else is a file of a chapter's reference solution.
+	isExercise := strings.HasPrefix(file, "exercises/") || strings.HasPrefix(file, "primer/") || startRE.MatchString(file)
+	full := filepath.Join(b.root, filepath.FromSlash(file))
+	if !isExercise {
+		full = b.solutionPath(file)
 	}
-	full := filepath.Join(base, filepath.FromSlash(file))
 	data, err := os.ReadFile(full)
 	if err != nil {
 		return "", err
@@ -167,7 +167,7 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if _, ok := opts["diff"]; ok && !isExercise {
 		chDir, rel, _ := strings.Cut(file, "/")
 		if prev := previousChapter(chDir); prev != "" {
-			prevData, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(b.previousRel(rel))))
+			prevData, perr := os.ReadFile(b.solutionPath(prev + "/" + b.previousRel(rel)))
 			if perr == nil {
 				added = addedLines(strings.Split(strings.TrimSuffix(string(prevData), "\n"), "\n"), lines)
 			} else {
@@ -238,12 +238,13 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if name == "" {
 		_, rel, _ := strings.Cut(file, "/")
 		name = rel
-		if isExercise { // exercises/chNN/exM/... -> exM/...; starters/chNN/... -> ...; primer/x/... -> x/...
-			parts := strings.SplitN(file, "/", 3)
-			name = parts[2]
-			if parts[0] == "primer" {
-				name = strings.TrimPrefix(file, "primer/")
-			}
+		switch { // show the path inside the exercise, primer or start folder
+		case startRE.MatchString(file):
+			name = startRE.ReplaceAllString(file, "")
+		case strings.HasPrefix(file, "primer/"):
+			name = strings.TrimPrefix(file, "primer/")
+		case isExercise: // exercises/chNN/exM/... -> exM/...
+			name = strings.SplitN(file, "/", 3)[2]
 		}
 	}
 	meta := ""
@@ -272,9 +273,10 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if meta != "" {
 		sb.WriteString(`<span class="fmeta">` + html.EscapeString(meta) + `</span>`)
 	}
-	srcHref := "../solutions/" + file
-	if isExercise {
-		srcHref = "../" + file
+	srcHref := "../" + file
+	if !isExercise {
+		ch, rest, _ := strings.Cut(file, "/")
+		srcHref = b.solutionURL(ch) + "/" + rest
 	}
 	sb.WriteString(`<a class="fsrc" href="` + html.EscapeString(srcHref) + `">full file</a>`)
 	sb.WriteString(`<button type="button" class="copy" aria-label="Copy code">Copy</button></figcaption>` + "\n")
@@ -502,26 +504,54 @@ func (b *builder) renderCopy(spec string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(filepath.Join(b.root, "solutions", filepath.FromSlash(target)))
+	data, err := os.ReadFile(b.solutionPath(target))
 	if err != nil {
 		return "", err
 	}
 	n := len(strings.Split(strings.TrimSuffix(string(data), "\n"), "\n"))
 	b.markShown(target, 1, n)
-	_, rel, _ := strings.Cut(target, "/")
+	copyCh, rel, _ := strings.Cut(target, "/")
 	why := opts["why"]
 	if why == "" {
 		why = "it is long and not about Go itself"
 	}
-	return fmt.Sprintf(`<aside class="callout note"><p class="callout-title">Copy this file</p><p>Copy <a href="../solutions/%s"><code>%s</code></a> from <code>solutions/%s</code> instead of typing it; %s.</p></aside>`,
-		html.EscapeString(target), html.EscapeString(rel), html.EscapeString(strings.SplitN(target, "/", 2)[0]), html.EscapeString(why)), nil
+	return fmt.Sprintf(`<aside class="callout note"><p class="callout-title">Copy this file</p><p>Copy <a href="%s/%s"><code>%s</code></a> from <code>%s</code> instead of typing it; %s.</p></aside>`,
+		html.EscapeString(b.solutionURL(copyCh)), html.EscapeString(rel), html.EscapeString(rel),
+		html.EscapeString(strings.TrimPrefix(b.solutionURL(copyCh), "../")), html.EscapeString(why)), nil
+}
+
+// startRE matches an include of a chapter's starter: ch01/start/...
+var startRE = regexp.MustCompile(`^ch\d+/start/`)
+
+// solutionDir is where a chapter's reference solution lives: <chapter>/solution
+// for chapters converted to the start/solution layout, solutions/<chapter> for
+// the rest.
+func (b *builder) solutionDir(ch string) string {
+	if st, err := os.Stat(filepath.Join(b.root, ch, "solution")); err == nil && st.IsDir() {
+		return filepath.Join(b.root, ch, "solution")
+	}
+	return filepath.Join(b.root, "solutions", ch)
+}
+
+// solutionURL is solutionDir as a link from a page in site/.
+func (b *builder) solutionURL(ch string) string {
+	if st, err := os.Stat(filepath.Join(b.root, ch, "solution")); err == nil && st.IsDir() {
+		return "../" + ch + "/solution"
+	}
+	return "../solutions/" + ch
+}
+
+// solutionPath maps "chNN/rest" to that file in the chapter's reference solution.
+func (b *builder) solutionPath(file string) string {
+	ch, rest, _ := strings.Cut(file, "/")
+	return filepath.Join(b.solutionDir(ch), filepath.FromSlash(rest))
 }
 
 // checkCoverage fails if a chapter adds source lines that its page neither
 // shows nor tells the reader to copy. Test files, _examples and import blocks
 // are exempt: tests are supplied by tools/check.sh, and gopls adds imports.
 func (b *builder) checkCoverage(chapterID string) error {
-	dir := filepath.Join(b.root, "solutions", chapterID)
+	dir := b.solutionDir(chapterID)
 	prev := previousChapter(chapterID)
 	var problems []string
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -548,7 +578,7 @@ func (b *builder) checkCoverage(chapterID string) error {
 			added[i] = true
 		}
 		if prev != "" {
-			if pd, perr := os.ReadFile(filepath.Join(b.root, "solutions", prev, filepath.FromSlash(b.previousRel(filepath.ToSlash(rel))))); perr == nil {
+			if pd, perr := os.ReadFile(b.solutionPath(prev + "/" + b.previousRel(filepath.ToSlash(rel)))); perr == nil {
 				added = addedLines(strings.Split(strings.TrimSuffix(string(pd), "\n"), "\n"), lines)
 			}
 		}
@@ -621,7 +651,7 @@ func (b *builder) collectShownNames() {
 		b.names = map[string]bool{}
 	}
 	for file, lines := range b.shown {
-		data, err := os.ReadFile(filepath.Join(b.root, "solutions", filepath.FromSlash(file)))
+		data, err := os.ReadFile(b.solutionPath(file))
 		if err != nil || !strings.HasSuffix(file, ".go") {
 			continue
 		}
@@ -642,7 +672,7 @@ var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 // declared in the chapter's non-test code but has not been shown on this page
 // or an earlier one. Those are the names a reader must spell exactly.
 func (b *builder) checkTestNames(chapterID string) error {
-	dir := filepath.Join(b.root, "solutions", chapterID)
+	dir := b.solutionDir(chapterID)
 	declared := map[string]bool{}
 	type use struct{ name, file string }
 	var uses []use
@@ -726,7 +756,7 @@ func (b *builder) checkTestNames(chapterID string) error {
 
 // renderTests lists the reference test files that tools/check.sh applies.
 func (b *builder) renderTests(chapterID string) string {
-	dir := filepath.Join(b.root, "solutions", chapterID)
+	dir := b.solutionDir(chapterID)
 	var items []string
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -740,7 +770,7 @@ func (b *builder) renderTests(chapterID string) string {
 			return nil
 		}
 		if strings.HasSuffix(rel, "_test.go") || strings.Contains(filepath.ToSlash(rel), "testdata/") {
-			items = append(items, fmt.Sprintf(`<li><a href="../solutions/%s/%s"><code>%s</code></a></li>`, chapterID, filepath.ToSlash(rel), filepath.ToSlash(rel)))
+			items = append(items, fmt.Sprintf(`<li><a href="%s/%s"><code>%s</code></a></li>`, b.solutionURL(chapterID), filepath.ToSlash(rel), filepath.ToSlash(rel)))
 		}
 		return nil
 	})

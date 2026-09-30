@@ -11,5 +11,7 @@ const (
 
 // NewRNG returns a deterministic generator: same seed and stream, same numbers.
 func NewRNG(seed, stream uint64) *rand.Rand {
-	return rand.New(rand.NewPCG(seed, stream))
+	// TASK 1: build a generator from seed and stream. Right now every caller
+	// gets the same numbers, whatever they ask for.
+	return rand.New(rand.NewPCG(0, 0))
 }

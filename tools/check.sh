@@ -11,7 +11,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then echo "usage: tools/check.sh chNN [dir]" >&2; exit 2; fi
 ch="$1"; dir="${2:-work/banditlab}"
-ref="$ROOT/solutions/$ch"
+ref="$ROOT/$ch/solution"                     # chapters in the start/solution layout
+[ -d "$ref" ] || ref="$ROOT/solutions/$ch"   # the others
 [ -d "$ref" ] || { echo "no such chapter: $ch" >&2; exit 2; }
 [ -f "$dir/go.mod" ] || { echo "$dir/go.mod not found: is this your project directory?" >&2; exit 2; }
 
