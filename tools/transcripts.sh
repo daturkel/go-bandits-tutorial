@@ -107,7 +107,7 @@ ch02() {
 }
 
 ch03() {
-  verify ch03
+  ts ch03 starter-tests 'go test -run ArmError ./bandit 2>&1 | head -14'
   t ch03 errors 'go run . -scenario nope' 'go run . -policy epsgreedy:lots' 'go run . -policy epsgreedy:2' 'go run . -policy thompson'
   t ch03 test-v 'go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit'
   t ch03 vet 'go vet ./_examples/vetbug; echo "exit status: $?"'

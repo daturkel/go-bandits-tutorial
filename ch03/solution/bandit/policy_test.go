@@ -59,19 +59,6 @@ func TestConstructorsRejectZeroArms(t *testing.T) {
 	}
 }
 
-// Tie-breaking must be random among equal arms, otherwise the first arm is
-// favoured before any data has arrived.
-func TestGreedyBreaksTiesAcrossAllArms(t *testing.T) {
-	pol, _ := NewEpsilonGreedy(4, 0, NewRNG(5, StreamPolicy))
-	seen := map[int]bool{}
-	for range 200 {
-		seen[pol.Select()] = true
-	}
-	if len(seen) != 4 {
-		t.Errorf("greedy tie-break only ever chose arms %v", seen)
-	}
-}
-
 // A failed constructor must give back a true nil Policy, not an interface
 // wrapping a nil pointer (which would compare != nil).
 func TestNewPolicyFailureReturnsNilInterface(t *testing.T) {

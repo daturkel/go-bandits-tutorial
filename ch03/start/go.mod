@@ -1,4 +1,4 @@
-module exercises/ch03
+module banditlab
 
 go 1.27.0
 

@@ -2,9 +2,9 @@ $ go test -run "^$" -bench . -benchmem ./bandit
 goos: linux
 goarch: amd64
 pkg: banditlab/bandit
-cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
-BenchmarkSelectUpdate/epsgreedy-4         	15536101	        77.85 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSelectUpdate/ucb1-4              	11022370	       107.1 ns/op	       0 B/op	       0 allocs/op
-BenchmarkRun-4                            	    1050	   1079428 ns/op	   82336 B/op	      11 allocs/op
+cpu: Intel(R) Xeon(R) Processor @ 2.80GHz
+BenchmarkSelectUpdate/epsgreedy-4         	12928113	        90.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSelectUpdate/ucb1-4              	 6543740	       185.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRun-4                            	     715	   1637718 ns/op	   82336 B/op	      11 allocs/op
 PASS
-ok  	banditlab/bandit	3.529s
+ok  	banditlab/bandit	3.569s

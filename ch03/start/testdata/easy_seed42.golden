@@ -1,0 +1,5 @@
+scenario=easy arms=[0.2 0.5 0.8] steps=5000 seed=42
+
+policy                   reward     regret  pulls per arm
+epsilon-greedy(0.10)       3825      175.5  [203 179 4618]
+ucb1                       3942       66.6  [36 150 4814]

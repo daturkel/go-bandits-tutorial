@@ -1,0 +1,11 @@
+$ go test -run ArmError ./bandit 2>&1 | head -14
+--- FAIL: TestArmErrorMessageNamesTheArmAndTheCause (0.00s)
+    errors_test.go:13: Error() = "", want "arm 3: boom"
+--- FAIL: TestArmErrorUnwrapsToItsCause (0.00s)
+    errors_test.go:20: errors.Is cannot see through ArmError: Unwrap is missing or wrong
+--- FAIL: TestArmErrorSurvivesWrapping (0.00s)
+    errors_test.go:36: errors.Is lost the sentinel behind the wrapper
+    errors_test.go:39: message "outer context: " should include the arm
+FAIL
+FAIL	banditlab/bandit	0.004s
+FAIL
