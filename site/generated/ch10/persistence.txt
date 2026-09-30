@@ -1,0 +1,38 @@
+$ go build -o /tmp/banditd ./cmd/banditd
+$ psql 'postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' -qc 'DROP DATABASE IF EXISTS demo' -c 'CREATE DATABASE demo' 2>/dev/null
+$ DATABASE_URL='postgres://postgres@127.0.0.1:55432/demo?sslmode=disable' BIN=/tmp/banditd bash _examples/persistence.sh
+== first run: six rewarded selections, one left waiting ==
+arms: {"arm":0,"pulls":1,"mean":0},{"arm":1,"pulls":4,"mean":1},{"arm":2,"pulls":1,"mean":0}
+
+== second run, same database ==
+arms: {"arm":0,"pulls":1,"mean":0},{"arm":1,"pulls":4,"mean":1},{"arm":2,"pulls":1,"mean":0}
+reward for the selection made before the restart: HTTP 204
+the same reward again:                            HTTP 409
+
+== what is in the database ==
+ arm | pulls | reward_sum 
+-----+-------+------------
+   0 |     1 |          0
+   1 |     5 |          5
+   2 |     1 |          0
+(3 rows)
+
+ arm | rewarded | count 
+-----+----------+-------
+   0 | t        |     1
+   1 | t        |     5
+   2 | t        |     1
+(3 rows)
+
+
+== third run: 2s time-to-live, silence counts as reward 0 ==
+arms right after four unanswered selections: {"arm":0,"pulls":1,"mean":0},{"arm":1,"pulls":5,"mean":1},{"arm":2,"pulls":1,"mean":0}
+arms three seconds later:                    {"arm":0,"pulls":5,"mean":0},{"arm":1,"pulls":5,"mean":1},{"arm":2,"pulls":1,"mean":0}
+a reward arriving after the deadline: HTTP 404
+expired rows still in pending: 0
+
+== server log (selected lines) ==
+level=INFO msg="database connected" service=banditd
+level=INFO msg="database connected" service=banditd
+level=INFO msg="database connected" service=banditd
+level=INFO msg="selections expired without a reward" service=banditd count=4 counted_as=0

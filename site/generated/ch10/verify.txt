@@ -1,0 +1,18 @@
+$ tools/check.sh ch10 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab/cmd/banditd	1.050s
+ok  	banditlab/cmd/banditsim	1.197s
+ok  	banditlab/internal/bandit	1.331s
+ok  	banditlab/internal/config	1.019s
+ok  	banditlab/internal/harness	1.253s
+ok  	banditlab/internal/logging	1.015s
+ok  	banditlab/internal/pool	1.112s
+ok  	banditlab/internal/server	1.803s
+ok  	banditlab/internal/stat	1.018s
+ok  	banditlab/internal/store	1.263s
+?   	banditlab/internal/store/storetest	[no test files]
+
+PASS: your project satisfies the ch10 tests

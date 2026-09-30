@@ -1,0 +1,202 @@
+<h2>What you will build</h2>
+<p>A service that remembers. Today <code>banditd</code> forgets everything when it stops: what it learned, and which selections were still waiting for a reward. You will store both in PostgreSQL, so a restart, a deploy, or a crash loses nothing. Along the way you will settle what a reward is allowed to do (arrive once, arrive late, never arrive) and back the answer with database guarantees and tests against a real database.</p>
+<p>The chapter also introduces a pattern you will reuse: a small interface with two implementations, an in-memory one for tests and local runs and a PostgreSQL one for production, both held to the same behaviour by one shared test suite.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>What state to persist, and why <em>totals</em> rather than the policy</li>
+  <li>Connecting to PostgreSQL with <code>pgx</code>; connection pools; parameterised queries</li>
+  <li>Atomic single statements (a CTE) and explicit transactions</li>
+  <li>Constraints and the database clock as sources of correctness</li>
+  <li><code>//go:embed</code></li>
+  <li>Injecting a clock to test expiry</li>
+  <li>Conformance tests shared by several implementations</li>
+  <li>Integration tests: a real database, one schema per test, skipping when it is absent</li>
+  <li>Delayed feedback: time-to-live, late rewards, and what silence means</li>
+</ul>
+
+<h2>What to store</h2>
+<p>There are two kinds of state, and they have different lifetimes.</p>
+<ul>
+  <li><strong>What the policy has learned.</strong> Rather than saving the policy object, save the smallest summary from which any policy can be rebuilt: for each arm, the number of rewards recorded and their sum. Epsilon-greedy and UCB1 need the count and the mean (sum divided by count). Thompson sampling needs the successes and failures, which are the sum and the count minus the sum. This summary is the <code>ArmTotals</code> below. It has two properties that will matter later: it does not depend on which policy is running, so you can switch policies without losing data, and totals from different places <strong>add</strong>, which is what lets replicas combine what they know (chapter 12).</li>
+  <li><strong>Selections waiting for a reward.</strong> Each one is a request ID, the arm it returned, and a deadline. The store keeps these until the reward arrives or the deadline passes.</li>
+</ul>
+<p>The running policy stays in memory, where selecting is fast. The database is the source of truth, and the in-memory policy is a cache of it: rebuilt at startup with <code>Restore</code>, and updated as rewards arrive.</p>
+<figure class="term"><figcaption><span class="fname">where each step reads and writes</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">POST /select   policy.Select() (memory)  →  store.AddPending(id, arm, ttl)  →  200</span><span class="ln out">POST /reward   store.Reward(id, r)  [claim + count, atomically]  →  policy.Update(arm, r)  →  204</span><span class="ln out">startup        store.Totals()  →  policy.Restore(totals)</span><span class="ln out">every 30s      store.Expire(implicit reward?)  →  policy.Update for each expired selection</span></code></pre></figure>
+
+<h2>Step 1: restoring a policy from totals</h2>
+<!-- include: ch10/internal/bandit/totals.go -->
+<p>Restoring is validated before anything is changed: a totals list with the wrong number of arms, arms out of order, negative counts, or a reward sum larger than the number of rewards is rejected with <code>ErrBadTotals</code>, and the policy is left as it was. (A sum can only exceed the count by floating-point noise, hence the small tolerance.) The check is written so that NaN fails it, for the reason given in chapter 3.</p>
+<p><code>SnapshotPolicy</code> now includes <code>Restorer</code>, and <code>Locked</code> forwards <code>Restore</code> under its lock:</p>
+<!-- include: ch10/internal/bandit/snapshot.go#SnapshotPolicy diff -->
+<p>A restored Thompson policy has the same Beta posteriors it would have reached by seeing the same rewards, and the tests check that a policy trained by <code>Update</code> and one restored from its totals report the same beliefs.</p>
+
+<h2>Step 2: the Store interface</h2>
+<p>The methods are chosen so that each is one atomic step from the caller's point of view:</p>
+<!-- include: ch10/internal/store/store.go -->
+<p>Some choices to note:</p>
+<ul>
+  <li><strong><code>Reward</code> claims and counts together.</strong> The two facts, "this selection has been rewarded" and "this arm's totals went up", must change together or not at all. If a crash could separate them, a reward could be lost or counted twice.</li>
+  <li><strong><code>AddPending</code> takes a <code>ttl</code>, not a deadline.</strong> A deadline computed by the application would be compared with the database's idea of "now", and with several replicas, their clocks disagree. Passing a duration lets the store do all comparisons against one clock.</li>
+  <li><strong>Every method takes a <code>context.Context</code></strong>, so a slow database can be given up on (chapter 7) and a cancelled request stops its queries.</li>
+  <li>The interface is defined next to its users' needs and is small (chapter 2's advice).</li>
+</ul>
+
+<h2>Step 3: the in-memory store</h2>
+<p>Start with the implementation that needs nothing installed. It also documents the intended behaviour in plain Go:</p>
+<!-- include: ch10/internal/store/memory.go -->
+<p>The clock is a field, <code>now func() time.Time</code>, defaulting to <code>time.Now</code> and replaceable with the <code>WithClock</code> option (chapter 9's functional options again). A test can then move time by assigning to a variable instead of sleeping:</p>
+<!-- include: ch10/internal/store/memory_test.go#TestMemoryFakeClock -->
+<p>Note the boundary: at exactly the deadline the selection has expired. Deadlines are half-open, "valid until, not including", and both stores follow that rule.</p>
+
+<h2>Step 4: PostgreSQL</h2>
+<h3>The schema</h3>
+<!-- include: ch10/internal/store/schema.sql -->
+<p>The constraints do real work. <code>PRIMARY KEY</code> on <code>request_id</code> makes a duplicate ID an error instead of a silent overwrite. The <code>REFERENCES arm_totals (arm)</code> foreign key means a selection cannot name an arm that has no totals row, so the reward path can never claim a selection and then find nowhere to count it. The index on <code>expires_at</code> lets the sweep find old rows without reading the whole table. Every statement is <code>IF NOT EXISTS</code>, so running the schema twice is harmless.</p>
+<p>The schema lives in its own <code>.sql</code> file and is compiled into the binary with <code>//go:embed</code>, so a single executable carries everything it needs and there is no file to lose at deploy time:</p>
+<!-- include: ch10/internal/store/postgres.go#schema,Postgres,PostgresOption,WithSchema,OpenPostgres,Postgres.init -->
+<p>Details:</p>
+<ul>
+  <li><code>//go:embed schema.sql</code> above a <code>string</code> (or <code>[]byte</code>, or <code>embed.FS</code> for a directory) fills the variable at compile time. The blank import of <code>embed</code> is what enables it.</li>
+  <li><strong><code>pgxpool</code></strong> is a pool of connections. A pool is what you want in a server: concurrent requests take connections from it, and each is returned when the query finishes. <code>Pool.Exec</code>, <code>Query</code>, and <code>QueryRow</code> handle that for you. Use the pool, not a single connection, unless you need a transaction (below).</li>
+  <li>The parameters <code>$1</code>, <code>$2</code> are sent to the server separately from the SQL text. <strong>Never build SQL with string concatenation or <code>fmt.Sprintf</code></strong> from values you did not write; parameters are what prevent SQL injection.</li>
+  <li>On start it creates rows for any arms that are missing, and refuses to start if the database has <em>more</em> arms than configured. Silently ignoring learned data because of a typo in a flag would be worse than a startup error. (Growing the number of arms is fine: new arms start empty.)</li>
+</ul>
+
+<h3>Adding a selection and claiming a reward</h3>
+<!-- include: ch10/internal/store/postgres.go#Postgres.AddPending,claimAndCount,Postgres.Reward -->
+<p>The claim is a single SQL statement with a <strong>common table expression</strong> (<code>WITH claimed AS (...)</code>). The inner <code>UPDATE</code> marks the pending row as rewarded, but only if it is not already rewarded and has not expired, and <code>RETURNING arm</code> passes the arm to the outer <code>UPDATE</code>, which adds to that arm's totals. A statement is atomic, so no transaction is needed for this. The <code>WHERE</code> clause is the entire argument for correctness.</p>
+<p>What if twenty clients send the same reward at once? PostgreSQL's default isolation level (read committed) makes concurrent updates of one row take turns. The second <code>UPDATE</code> waits for the first to commit, then re-checks its <code>WHERE</code> clause against the row as it now is. It finds <code>rewarded = true</code>, matches nothing, and returns no rows. Exactly one caller gets the arm.</p>
+<p>When the statement returns no row, <code>Reward</code> runs a second query only to find out <em>why</em>, so that the caller can tell a duplicate (409) from an unknown or expired ID (404). That diagnosis is not part of the atomic step, and does not need to be.</p>
+
+<h3>Expiring selections, in a transaction</h3>
+<p>Expiry has several steps: delete the old rows, see which were never rewarded, and (optionally) count them as failures. These must succeed together, so this one uses an explicit <strong>transaction</strong>:</p>
+<!-- include: ch10/internal/store/postgres.go#Postgres.Expire -->
+<p><code>pgx.BeginFunc</code> begins a transaction, runs the function, and commits if it returns nil. If the function returns an error or panics, it rolls back, so a failure halfway leaves the database as it was. The function uses <code>tx</code>, not the pool, for every statement, since only the <code>tx</code> connection is inside the transaction. <code>pgx.CollectRows</code> with <code>RowToStructByPos</code> scans result rows into a slice of structs by column position.</p>
+<!-- include: ch10/internal/store/postgres.go#Postgres.Totals,Postgres.Ping,Postgres.Close -->
+<p>The file ends with a compile-time assertion (chapter 2) that <code>*Postgres</code> satisfies <code>Store</code>:</p>
+<!-- include: ch10/internal/store/postgres.go lines=192-192 -->
+
+<h2>Step 5: one test suite for both stores</h2>
+<p>Two implementations of one interface should behave identically, and the way to make sure is to run the same tests against both. The shared tests are a normal package, <code>storetest</code>, that takes a constructor (the standard library does the same in <code>testing/fstest</code>):</p>
+<!-- copy: ch10/internal/store/storetest/storetest.go why="it is about 200 lines of test scenarios; the interesting parts are quoted below" -->
+<!-- copy: ch10/internal/store/storetest/postgres.go why="it holds the two helpers the PostgreSQL tests share" -->
+<p>Each implementation's own test file is a few lines:</p>
+<!-- include: ch10/internal/store/postgres_test.go#TestPostgresConformance -->
+<p>Two of the scenarios carry the most weight. Reward the same ID twice, and the second attempt must be refused without changing the totals. And the concurrent one: twenty goroutines reward the same ID at once, and exactly one may win:</p>
+<!-- include: ch10/internal/store/storetest/storetest.go#testConcurrentSameID -->
+<h3>Running against a real database</h3>
+<p>The PostgreSQL tests need a server. They read its address from <code>BANDIT_TEST_DATABASE_URL</code> and are <strong>skipped</strong> when it is unset, so <code>go test ./...</code> passes on a machine with no database:</p>
+<!-- transcript: ch10/skipped -->
+<p>To run them for real, you need a PostgreSQL server. <code>tools/pg.sh</code> in this repository starts a throwaway one from the installed server binaries (Debian and Ubuntu: <code>apt install postgresql</code>), with no Docker and no system service:</p>
+<figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">tools/pg.sh start</span><span class="ln out">postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable</span><span class="ln cmd">export BANDIT_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable'</span></code></pre></figure>
+<div class="callout note"><p class="callout-title">Not verified here: Docker</p>
+<p>If you would rather use Docker, <code>docker run --rm -p 55432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16</code> should give the same URL. That command was <strong>not run</strong> while writing this course, because the environment had no Docker daemon. Everything on this page was run against PostgreSQL 16 started by <code>tools/pg.sh</code>.</p></div>
+<p>Each test creates its own <em>schema</em> (a namespace within the database), points its connection at it, and drops it afterwards. Tests can therefore run in any order, or in parallel, without seeing each other's rows, and without needing a separate database per test. With the URL set, the whole suite runs:</p>
+<!-- transcript: ch10/integration -->
+<p>The last two lines are integration tests of the layers above the store: a server, and the <code>banditd</code> program, restarted against the same database.</p>
+<h3>Do the tests notice a bug?</h3>
+<p>A passing test proves little unless it can fail. Here the claim query's guard, <code>AND NOT rewarded</code>, is deleted from a scratch copy of the project, and the same tests are run:</p>
+<!-- transcript: ch10/mutation -->
+<p>Both symptoms are what the missing condition should cause: a second reward is accepted, and all twenty concurrent callers win, so the arm is credited twenty times. Removing a line and watching a test fail is a quick way to check that a test is really guarding it.</p>
+
+<h2>Step 6: use the store in the server</h2>
+<p>The server now takes a <code>store.Store</code>. The in-memory <code>pendingStore</code> from chapter 8 is gone. New defaults, then the constructor and options:</p>
+<!-- include: ch10/internal/server/server.go#defaultPendingTTL,storeTimeout,Server,WithPendingTTL,New diff -->
+<p>Selecting now records the choice, and can fail:</p>
+<!-- include: ch10/internal/server/server.go#Server.handleSelect diff -->
+<p>The <code>Select</code> call has already run when the store write fails. That is harmless because selecting does not change what the policy has learned; the client just gets a 503 and can retry. Every store call gets its own timeout, derived from the request's context, so a stuck database cannot hold requests open indefinitely.</p>
+<!-- include: ch10/internal/server/server.go#Server.handleReward diff -->
+<p>The mapping of store errors to HTTP statuses is the interesting part. <code>ErrUnknownID</code> becomes 404 and <code>ErrAlreadyRewarded</code> 409, as before, matched with <code>errors.Is</code> (chapter 3). Anything else is a store failure:</p>
+<!-- include: ch10/internal/server/server.go#Server.handleHealth,Server.storeFailure diff -->
+<p>A store failure returns 503 with a generic message and logs the real error with the request ID. The database's error text (host names, driver messages) is for operators, not clients. The health check now pings the store, so a load balancer stops routing to an instance that has lost its database.</p>
+<p>The ordering in <code>handleReward</code> matters: the durable write happens first and the in-memory update second. If the process dies between them, the database has the reward and the restart rebuilds the policy from it. The reverse order could show a reward in memory that was never saved.</p>
+<p>Startup and periodic housekeeping are two more methods:</p>
+<!-- include: ch10/internal/server/server.go#Server.Restore,Server.ExpireLoop diff -->
+<p><code>ExpireLoop</code> is a <code>select</code> on a ticker and a context (chapter 7): it returns as soon as the context ends, and the daemon waits for it before closing the store. It also applies the implicit reward to the in-memory policy for each expired selection, so the policy and the database agree.</p>
+<p>One bug found while writing this: the log line for expirations first printed <code>counted_as=0xc000012628</code>. The code passed a <code>*float64</code> to <code>slog</code>, which logs the pointer, not the number it points to. The fix is the <code>counted</code> variable above, and <code>TestExpireLoopCountsSilenceAsFailure</code> checks the log text so it cannot come back.</p>
+<p>The tests that exercise all this without a database use a <code>brokenStore</code> that fails every call, and check both the status codes and that the driver's error text does not reach the client:</p>
+<!-- include: ch10/internal/server/store_test.go#brokenStore,errDown,brokenStore.AddPending,brokenStore.Reward,brokenStore.Ping,TestStoreOutageIsA503WithoutLeakingDetails -->
+<p><code>brokenStore</code> embeds a <code>store.Store</code> and overrides three methods. That embedding trick (chapter 2, chapter 8) gives you a test double for a wide interface in a few lines: everything not overridden is delegated to the embedded value.</p>
+
+<h2>Step 7: configuration and the daemon</h2>
+<p>Four new settings, all optional. With no database URL the daemon still starts, using the in-memory store, and says so loudly:</p>
+<!-- include: ch10/internal/config/config.go#Config,Load diff -->
+<p><code>ExpireReward</code> is a <code>*float64</code> for the same reason <code>Reward</code> was one in chapter 8: <code>nil</code> means "do not count expired selections at all", while a pointer to 0 means "count them as a reward of zero", and a plain <code>float64</code> cannot express both.</p>
+<!-- include: ch10/cmd/banditd/run.go diff -->
+<p>The sweeping goroutine follows the lifecycle rule from chapter 7: it has a context that ends it, and <code>run</code> waits for it with a <code>WaitGroup</code> before the deferred <code>st.Close()</code> runs. Closing the pool under a sweep in progress would turn a clean shutdown into an error.</p>
+<p>One version note. This chapter adds the course's first dependency, and it is pinned. Run <code>go get github.com/jackc/pgx/v5@v5.7.6</code> in your project. Later pgx releases require a newer Go than the 1.24 this course uses, and <code>go get</code> without a version would raise your <code>go.mod</code>'s Go version to match.</p>
+
+<h2>Step 8: late feedback, or none</h2>
+<p>A reward names a selection, and sometimes the reward comes late or never. The store forces decisions the code cannot avoid, and they are modelling decisions as much as engineering ones.</p>
+<ul>
+  <li><strong>How long is a selection valid?</strong> <code>BANDIT_PENDING_TTL</code>, ten minutes by default. Choose it from the real distribution of feedback delay, for example a high percentile of it. Too short and good data is thrown away; too long and the table grows and stale rewards get attributed to decisions the world has moved past.</li>
+  <li><strong>What happens to a reward after the deadline?</strong> It is refused with 404 and does not change anything.</li>
+  <li><strong>What does silence mean?</strong> With <code>BANDIT_EXPIRE_REWARD</code> unset, an expired unrewarded selection is simply forgotten, as if it never happened. Set to <code>0</code>, silence counts as a failure: a click never arrived, so the pull was worth nothing. Which is right depends on the application. "No conversion within seven days" is a legitimate zero; "the client crashed before it could report" is not, and counting it biases the policy against whichever arms are shown more often to flaky clients.</li>
+</ul>
+<p>The next section shows the effect. There is a second, subtler consequence of delay, first seen in chapter 8: while selections wait for rewards, the policy cannot use them. Chapter 12 measures what that costs.</p>
+
+<h2>Step 9: watch it survive</h2>
+<p>This script runs the real <code>banditd</code> against a real PostgreSQL database three times. First it makes six rewarded selections and leaves one waiting. Then it restarts and looks at what survived, and shows the tables. Finally it runs with a 2-second time-to-live and counts silence as failure.</p>
+<!-- include: ch10/_examples/persistence.sh title="_examples/persistence.sh" -->
+<!-- transcript: ch10/persistence -->
+<ul>
+  <li>After the restart the per-arm counts are identical, and the selection made <em>before</em> the restart can still be rewarded (204). A second attempt is refused (409).</li>
+  <li>The tables show what the service holds: three totals rows, and the selections with their <code>rewarded</code> flag.</li>
+  <li>In the third run, four selections are made and never answered. Immediately after, the counts are unchanged, since nothing has been learned. A few seconds later the sweep has expired them and counted each as a reward of 0, and arm 0 now has five pulls and a mean of 0. A reward that arrives after the deadline gets 404.</li>
+  <li>All four unanswered selections chose arm 0, because, as chapter 8 showed, a deterministic policy repeats itself while it waits. So the whole batch of failures was charged to one arm. That is the delayed-feedback problem in miniature.</li>
+</ul>
+
+<div class="callout note"><p class="callout-title">A note on Redis (design only, not implemented or run in this course)</p>
+<p>Redis would suit the same job with a different shape. Pending selections could be plain keys with the deadline built in: <code>SET pending:&lt;id&gt; &lt;arm&gt; NX EX 600</code> creates the key only if it does not exist and lets Redis delete it after ten minutes, so no sweep is needed for that part. Claiming a reward would be an atomic get-and-delete (<code>GETDEL</code>) or a small Lua script that also increments per-arm counters (<code>HINCRBY totals:&lt;arm&gt; pulls 1</code>), since Redis runs one command or script at a time. The trade-offs: Redis is faster and simpler for expiring keys, but its durability depends on how persistence (RDB snapshots, AOF logging) is configured, and it has no transactions across your own tables or constraints such as the foreign key above. Distinguishing "already rewarded" from "expired" would need a tombstone key. The <code>Store</code> interface is designed so that a Redis implementation could be dropped in and checked with the same <code>storetest</code> suite. A Redis server binary was available in the environment used to write this course, but no Redis code was written or tested, so treat this paragraph as a sketch.</p></div>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Add the dependency to your project (see the version note above), then copy the <code>storetest</code> directory from the solution as described in step 5. First check your own project against this chapter's reference tests. The script never modifies your files; with no database configured, the PostgreSQL tests skip:</p>
+<!-- transcript: ch10/verify -->
+<!-- tests -->
+<p>Start a database and run the tests for real (the URL is the one <code>tools/pg.sh start</code> prints; from your project directory the script is at <code>../../tools/pg.sh</code> if your project is in <code>work/banditlab</code>):</p>
+<figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">export BANDIT_TEST_DATABASE_URL=$(../../tools/pg.sh start)</span><span class="ln cmd">go test -race -count=1 ./...</span></code></pre></figure>
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch10/checkpoint -->
+<p>To run the daemon against a database: <code>BANDIT_DATABASE_URL=postgres://... go run ./cmd/banditd</code>.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch10</code>. None needs a database.</p>
+
+<details class="exercise">
+  <summary>1. Do something at most once per key</summary>
+  <div class="ex-body">
+    <p>Implement <code>Once</code> in <code>exercises/ch10/ex1</code>: <code>Do(key, f)</code> runs <code>f</code> only if no earlier call for that key ran within the last <code>ttl</code>. Of many concurrent calls with the same key, exactly one runs <code>f</code>; the others return immediately without waiting. If <code>f</code> fails, the claim is released so a retry can run.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch10/ex1/reference/once.go#Once,NewOnce,Once.Do -->
+    <p>The claim is made under the lock and <code>f</code> runs outside it, so a slow action does not block other keys, and the 49 losers in the test return at once instead of queueing. Releasing the claim when <code>f</code> fails is what keeps a transient error from blocking the key for the whole window. This is the in-process shape of the SQL claim in step 4: check and mark in one indivisible step, then do the work.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. A map with expiry</summary>
+  <div class="ex-body">
+    <p>Implement the generic <code>Expiring[K, V]</code> in <code>exercises/ch10/ex2</code>: <code>Set(k, v, ttl)</code>, <code>Get(k)</code> that stops returning a value at its deadline, <code>Sweep()</code> that removes expired entries and counts them, and <code>Len()</code>. It takes a clock, so the tests move time by hand.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch10/ex2/reference/expiring.go#Expiring,entry,NewExpiring,Expiring.Set,Expiring.Get,Expiring.Sweep,Expiring.Len -->
+    <p>Expiry is checked on read (<code>Get</code> refuses a dead entry) and reclaimed on <code>Sweep</code>, so correctness never depends on how often the sweep runs; the sweep only bounds memory. The comparison is <code>!now.Before(expiresAt)</code>, making the deadline itself expired, the same half-open rule as the stores. Deleting from a map while ranging over it is allowed in Go.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Retry with backoff until the database is up</summary>
+  <div class="ex-body">
+    <p>When a service and its database start together (chapter 14 will do exactly that), the database is often not ready yet. Implement <code>Retry</code> in <code>exercises/ch10/ex3</code>: call <code>f</code> up to <code>attempts</code> times, waiting <code>base</code>, <code>2*base</code>, <code>4*base</code>, ... (capped at <code>max</code>) between failures, stopping at once on a <code>Permanent</code> error or when the context ends. Also implement <code>SleepContext</code>. The sleeping function is a parameter, so the tests do not actually wait.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch10/ex3/reference/retry.go#Retry,SleepContext -->
+    <p>Passing <code>sleep</code> in makes the timing testable: the tests record the requested delays instead of waiting for them. <code>errors.As</code> finds the <code>permanent</code> wrapper anywhere in the error chain. The loop does not sleep after the final attempt, since nothing follows it. <code>SleepContext</code> uses a timer and a <code>select</code> rather than <code>time.Sleep</code>, because <code>time.Sleep</code> cannot be interrupted, and stops the timer so it is not left running.</p>
+    </details>
+  </div>
+</details>

@@ -1,0 +1,8 @@
+$ sed -i 's/ AND NOT rewarded//' internal/store/postgres.go
+$ go test -count=1 -run 'PostgresConformance' ./internal/store 2>&1 | grep -E '^ +(--- FAIL|storetest)'
+    --- FAIL: TestPostgresConformance/reward_is_applied_once (0.02s)
+        storetest.go:92: second Reward = <nil>, want ErrAlreadyRewarded
+        storetest.go:95: totals changed by the rejected reward: [2 0 0] / [2 0 0]
+    --- FAIL: TestPostgresConformance/concurrent_rewards_for_one_id (0.04s)
+        storetest.go:202: 20 successes and 0 duplicates, want 1 and 19
+        storetest.go:205: totals = [0 0 20] / [0 0 20], want the reward counted exactly once

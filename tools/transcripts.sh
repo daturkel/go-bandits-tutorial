@@ -168,5 +168,34 @@ ch09() {
   t ch09 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09; fi
+ch10() {
+  "$ROOT/tools/pg.sh" start > /dev/null
+  # What a reader sees without a database: the integration tests skip.
+  ( unset BANDIT_TEST_DATABASE_URL; verify ch10 )
+  local pgurl="postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable"
+
+  t ch10 skipped 'go test -count=1 -v -run "Postgres" ./internal/store 2>&1 | grep -E "^(--- |ok)"'
+  t ch10 integration "BANDIT_TEST_DATABASE_URL='$pgurl' go test -race -count=1 -v -run 'Conformance|Persists|Refuses|Restart' ./internal/store ./internal/server ./cmd/banditd 2>&1 | grep -E '^(--- |    --- |ok|FAIL)'"
+
+  # Break the claim query on purpose and watch the conformance tests catch it.
+  local out="$ROOT/site/generated/ch10/mutation.txt" dir
+  dir=$(mktemp -d)
+  cp -r "$ROOT/solutions/ch10/." "$dir/"
+  : > "$out"
+  for cmd in \
+    "sed -i 's/ AND NOT rewarded//' internal/store/postgres.go" \
+    "go test -count=1 -run 'PostgresConformance' ./internal/store 2>&1 | grep -E '^ +(--- FAIL|storetest)'"; do
+    echo "\$ $cmd" >> "$out"
+    (cd "$dir" && BANDIT_TEST_DATABASE_URL="$pgurl" eval "$cmd") >> "$out" 2>&1
+  done
+  rm -rf "$dir"
+  echo "wrote ${out#$ROOT/}"
+
+  t ch10 persistence 'go build -o /tmp/banditd ./cmd/banditd' \
+    "psql '$pgurl' -qc 'DROP DATABASE IF EXISTS demo' -c 'CREATE DATABASE demo' 2>/dev/null" \
+    "DATABASE_URL='postgres://postgres@127.0.0.1:55432/demo?sslmode=disable' BIN=/tmp/banditd bash _examples/persistence.sh"
+  t ch10 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10; fi
 for c in "$@"; do "$c"; done

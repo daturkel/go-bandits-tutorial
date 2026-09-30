@@ -66,7 +66,7 @@ Reference answers are on the chapter page and in `exM/reference/`.
 | `site/` | The course website. `index.html` and `chNN.html` are built output; `src/` holds page sources with include markers. |
 | `solutions/` | Per-chapter snapshots. Every page listing is pulled from here. |
 | `exercises/` | Exercise starters, tests, and reference answers. |
-| `tools/` | `check.sh` and `start.sh` for readers; the site builder (`build_site`), transcript generator, and exercise checker for maintainers. |
+| `tools/` | `check.sh` and `start.sh` for readers; `pg.sh` starts a throwaway local PostgreSQL for chapter 10's integration tests; the site builder (`build_site`), transcript generator, and exercise checker for maintainers. |
 | `TODO.md` | Anything that could not be verified or was deferred. |
 
 ## Maintaining the site

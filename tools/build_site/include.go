@@ -215,7 +215,7 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if strings.HasSuffix(file, ".go") {
 		highlighted = splitLines(highlightGo(src))
 	} else {
-		highlighted = splitLines(highlightPlain(src))
+		highlighted = splitLines(highlightPlain(src, strings.HasSuffix(file, ".sql")))
 	}
 
 	var shown []codeLine
@@ -389,7 +389,10 @@ func recvName(fl *ast.FieldList) string {
 	if s, ok := t.(*ast.StarExpr); ok {
 		t = s.X
 	}
-	if ix, ok := t.(*ast.IndexExpr); ok {
+	switch ix := t.(type) {
+	case *ast.IndexExpr: // Type[T]
+		t = ix.X
+	case *ast.IndexListExpr: // Type[K, V]
 		t = ix.X
 	}
 	if id, ok := t.(*ast.Ident); ok {

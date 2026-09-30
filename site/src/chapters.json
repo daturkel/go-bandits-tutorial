@@ -8,7 +8,7 @@
   {"id":"ch07","label":"Chapter 7","part":"Part II: Concurrency","title":"Context, select, worker pools","summary":"Cancellation, timeouts and bounded worker pools without goroutine leaks.","status":"ready"},
   {"id":"ch08","label":"Chapter 8","part":"Part III: Serving","title":"net/http","summary":"Serve select and reward endpoints with JSON, middleware and httptest.","status":"ready"},
   {"id":"ch09","label":"Chapter 9","part":"Part III: Serving","title":"Structure and operations","summary":"Project layout, configuration, structured logging and graceful shutdown.","status":"ready"},
-  {"id":"ch10","label":"Chapter 10","part":"Part III: Serving","title":"Persistence and delayed feedback","summary":"Store bandit state and pending selections; handle rewards that arrive late or never.","status":"planned"},
+  {"id":"ch10","label":"Chapter 10","part":"Part III: Serving","title":"Persistence and delayed feedback","summary":"Store bandit state and pending selections; handle rewards that arrive late or never.","status":"ready"},
   {"id":"ch11","label":"Chapter 11","part":"Part III: Serving","title":"Observability and performance","summary":"Prometheus metrics, pprof, a load generator and one real bottleneck.","status":"planned"},
   {"id":"ch12","label":"Chapter 12","part":"Part IV: Distributed","title":"Why naive replicas break the bandit","summary":"Watch replicas diverge, then fix it with mergeable counts and measure the cost of staleness.","status":"planned"},
   {"id":"ch13","label":"Chapter 13","part":"Part IV: Distributed","title":"Splitting into services","summary":"Protobuf and gRPC: a policy service, feedback ingest and an aggregator.","status":"planned"},

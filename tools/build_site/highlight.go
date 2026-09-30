@@ -124,8 +124,9 @@ func highlightGo(src string) []seg {
 	return out
 }
 
-// highlightPlain handles non-Go files: `#` and `//` comments and quoted strings.
-func highlightPlain(src string) []seg {
+// highlightPlain handles non-Go files: `#` and `//` comments (`--` for SQL,
+// selected by isSQL) and quoted strings.
+func highlightPlain(src string, isSQL bool) []seg {
 	var out []seg
 	var plain strings.Builder
 	flush := func() {
@@ -137,7 +138,8 @@ func highlightPlain(src string) []seg {
 	for i := 0; i < len(src); {
 		c := src[i]
 		switch {
-		case c == '#' || (c == '/' && i+1 < len(src) && src[i+1] == '/'):
+		case (!isSQL && c == '#') || (c == '/' && i+1 < len(src) && src[i+1] == '/' && !isSQL) ||
+			(isSQL && c == '-' && i+1 < len(src) && src[i+1] == '-'):
 			j := strings.IndexByte(src[i:], '\n')
 			if j < 0 {
 				j = len(src) - i

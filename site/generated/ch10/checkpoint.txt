@@ -1,0 +1,22 @@
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab/cmd/banditd	1.048s
+ok  	banditlab/cmd/banditsim	1.196s
+ok  	banditlab/internal/bandit	1.311s
+ok  	banditlab/internal/config	1.014s
+ok  	banditlab/internal/harness	1.288s
+ok  	banditlab/internal/logging	1.020s
+ok  	banditlab/internal/pool	1.120s
+ok  	banditlab/internal/server	1.841s
+ok  	banditlab/internal/stat	1.013s
+ok  	banditlab/internal/store	1.267s
+?   	banditlab/internal/store/storetest	[no test files]
+$ go run ./cmd/banditsim run -seed 7 -steps 1000
+scenario=easy arms=[0.2 0.5 0.8] steps=1000 seed=7
+
+policy                   reward     regret  pulls per arm
+epsilon-greedy(0.10)        752       36.3  [45 31 924]
+ucb1                        751       46.5  [27 101 872]
+thompson                    781        6.0  [4 12 984]

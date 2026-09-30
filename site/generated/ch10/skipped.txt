@@ -1,0 +1,6 @@
+$ go test -count=1 -v -run "Postgres" ./internal/store 2>&1 | grep -E "^(--- |ok)"
+--- SKIP: TestPostgresConformance (0.00s)
+--- SKIP: TestPostgresPersistsAcrossRestarts (0.00s)
+--- SKIP: TestPostgresRefusesToDropArms (0.00s)
+--- PASS: TestPostgresBadURL (0.00s)
+ok  	banditlab/internal/store	0.006s
