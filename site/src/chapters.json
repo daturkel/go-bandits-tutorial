@@ -6,7 +6,7 @@
   {"id":"ch05","label":"Chapter 5","part":"Part II: Concurrency","title":"Goroutines and channels","summary":"Run simulations in parallel with fan-out and fan-in.","status":"ready"},
   {"id":"ch06","label":"Chapter 6","part":"Part II: Concurrency","title":"Shared state","summary":"Mutexes, atomics and the race detector: see a real race, then fix it.","status":"ready"},
   {"id":"ch07","label":"Chapter 7","part":"Part II: Concurrency","title":"Context, select, worker pools","summary":"Cancellation, timeouts and bounded worker pools without goroutine leaks.","status":"ready"},
-  {"id":"ch08","label":"Chapter 8","part":"Part III: Serving","title":"net/http","summary":"Serve select and reward endpoints with JSON, middleware and httptest.","status":"planned"},
+  {"id":"ch08","label":"Chapter 8","part":"Part III: Serving","title":"net/http","summary":"Serve select and reward endpoints with JSON, middleware and httptest.","status":"ready"},
   {"id":"ch09","label":"Chapter 9","part":"Part III: Serving","title":"Structure and operations","summary":"Project layout, configuration, structured logging and graceful shutdown.","status":"planned"},
   {"id":"ch10","label":"Chapter 10","part":"Part III: Serving","title":"Persistence and delayed feedback","summary":"Store bandit state and pending selections; handle rewards that arrive late or never.","status":"planned"},
   {"id":"ch11","label":"Chapter 11","part":"Part III: Serving","title":"Observability and performance","summary":"Prometheus metrics, pprof, a load generator and one real bottleneck.","status":"planned"},

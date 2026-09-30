@@ -189,3 +189,6 @@ details.answer > summary { cursor: pointer; font: 600 .9rem var(--sans); color: 
 details.tests-list { margin: 1rem 0; font: .9rem var(--sans); }
 details.tests-list summary { cursor: pointer; color: var(--accent); }
 details.tests-list ul { margin: .5rem 0 0; }
+
+/* Hand-drawn diagrams read their colours from the page theme. */
+figure.chart { --dg-surface: var(--surface); --dg-ink: var(--ink); --dg-ink2: var(--ink2); --dg-line: var(--grid); --dg-a: var(--series-1); --dg-b: var(--series-2); }

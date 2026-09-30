@@ -1,0 +1,59 @@
+<svg class="diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 340" role="img" aria-labelledby="rc-title rc-desc">
+<title id="rc-title">How a selection and its reward travel through the service</title>
+<desc id="rc-desc">The client sends POST /select to the server. The server asks the policy for an arm and records the arm in the pending store under the request id, then replies with the request id and arm. Later the client sends POST /reward with that request id and a reward. The server looks the id up in the pending store to find the arm, updates the policy with the reward, and replies 204.</desc>
+<style>
+.diagram{--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--line:#c9c7c0;--a:#2a78d6;--b:#eb6834;font-family:system-ui,sans-serif}
+.diagram text{fill:var(--dg-ink,var(--ink));font-size:13px}
+.diagram .dim{fill:var(--dg-ink2,var(--ink2));font-size:12px}
+.diagram .box{fill:none;stroke:var(--dg-line,var(--line));stroke-width:1.5}
+.diagram .head{font-weight:700;font-size:14px}
+.diagram .sel{stroke:var(--dg-a,var(--a));fill:none;stroke-width:2}
+.diagram .rew{stroke:var(--dg-b,var(--b));fill:none;stroke-width:2}
+.diagram .selt{fill:var(--dg-a,var(--a));font-weight:700}
+.diagram .rewt{fill:var(--dg-b,var(--b));font-weight:700}
+</style>
+<rect width="900" height="340" fill="var(--dg-surface,var(--surface))"/>
+<defs>
+<marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--dg-a,var(--a))"/></marker>
+<marker id="ah-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--dg-b,var(--b))"/></marker>
+</defs>
+
+<rect class="box" x="10" y="40" width="110" height="280" rx="10"/>
+<text class="head" x="65" y="66" text-anchor="middle">Client</text>
+
+<rect class="box" x="330" y="40" width="180" height="280" rx="10"/>
+<text class="head" x="420" y="66" text-anchor="middle">Server</text>
+<text class="dim" x="420" y="86" text-anchor="middle">request id · log · recover</text>
+<text class="dim" x="420" y="308" text-anchor="middle">handleSelect · handleReward</text>
+
+<rect class="box" x="700" y="40" width="180" height="150" rx="10"/>
+<text class="head" x="790" y="66" text-anchor="middle">Policy</text>
+<text class="dim" x="790" y="86" text-anchor="middle">(behind a lock)</text>
+<text x="790" y="140" text-anchor="middle">Select · Update</text>
+
+<rect class="box" x="700" y="210" width="180" height="110" rx="10"/>
+<text class="head" x="790" y="236" text-anchor="middle">Pending</text>
+<text class="dim" x="790" y="256" text-anchor="middle">request id → arm</text>
+<text x="790" y="300" text-anchor="middle">add · claim</text>
+
+<!-- select flow -->
+<path class="sel" d="M120 110 H328" marker-end="url(#ah-a)"/>
+<text class="selt" x="132" y="102">1</text><text x="150" y="102">POST /select</text>
+<path class="sel" d="M510 110 H698" marker-end="url(#ah-a)"/>
+<text class="selt" x="522" y="102">2</text><text x="540" y="102">Select()</text>
+<path class="sel" d="M510 236 H698" marker-end="url(#ah-a)"/>
+<text class="selt" x="522" y="228">2</text><text x="540" y="228">add(id, arm)</text>
+<path class="sel" d="M328 140 H122" marker-end="url(#ah-a)"/>
+<text class="selt" x="132" y="132">3</text><text x="150" y="132">200 {request_id, arm}</text>
+
+<!-- reward flow -->
+<path class="rew" d="M120 200 H328" marker-end="url(#ah-b)"/>
+<text class="rewt" x="132" y="192">4</text><text x="150" y="192">POST /reward</text>
+<text class="dim" x="150" y="218">{request_id, reward}</text>
+<path class="rew" d="M510 282 H698" marker-end="url(#ah-b)"/>
+<text class="rewt" x="522" y="274">5</text><text x="540" y="274">claim(id) → arm</text>
+<path class="rew" d="M510 160 H698" marker-end="url(#ah-b)"/>
+<text class="rewt" x="522" y="152">5</text><text x="540" y="152">Update(arm, reward)</text>
+<path class="rew" d="M328 262 H122" marker-end="url(#ah-b)"/>
+<text class="rewt" x="132" y="254">6</text><text x="150" y="254">204 No Content</text>
+</svg>

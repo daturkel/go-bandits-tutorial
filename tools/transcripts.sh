@@ -131,5 +131,12 @@ ch07() {
   t ch07 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07; fi
+ch08() {
+  verify ch08
+  t ch08 session 'go build -o /tmp/banditsim .' 'BIN=/tmp/banditsim bash _examples/session.sh'
+  t ch08 rejections 'go test -race -count=1 -v -run "TestRewardRejections|TestRoutingErrors|TestChainOrder" ./server'
+  t ch08 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08; fi
 for c in "$@"; do "$c"; done

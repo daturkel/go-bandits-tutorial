@@ -1,0 +1,190 @@
+<h2>What you will build</h2>
+<p>An HTTP service around the policy from chapter 6. A client asks <code>POST /select</code> for an arm and gets back the arm plus a request ID. Later, when it knows whether the choice paid off, it calls <code>POST /reward</code> with that ID and the reward. Two more routes, <code>GET /stats</code> and <code>GET /healthz</code>, let you look inside and check that it is alive. Around the handlers sit three pieces of middleware: request IDs, request logging, and panic recovery.</p>
+<!-- svg: ../diagrams/ch08-flow.svg caption="One selection and its reward. Steps 1 to 3 happen when the client needs an arm; steps 4 to 6 happen whenever the outcome is known, possibly much later." -->
+<p>The Go standard library is enough for all of it: <code>net/http</code> for serving, <code>encoding/json</code> for bodies, <code>log/slog</code> for logs, and <code>net/http/httptest</code> for testing without a network. No web framework is involved.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li><code>http.Handler</code>, <code>http.HandlerFunc</code>, and <code>http.ServeMux</code> patterns with methods and wildcards</li>
+  <li>JSON with <code>encoding/json</code>: struct tags, pointers for optional fields, strict decoding</li>
+  <li>HTTP status codes and a consistent error shape</li>
+  <li>Middleware as functions that wrap handlers; embedding to intercept a <code>ResponseWriter</code></li>
+  <li>Context values, with a private key type</li>
+  <li>Server timeouts</li>
+  <li>Type assertions</li>
+  <li><code>httptest</code>: <code>NewRequest</code>, <code>NewRecorder</code> and <code>NewServer</code></li>
+</ul>
+
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p>Flask and FastAPI sit on top of a separate server (gunicorn, uvicorn). In Go, <code>net/http</code> is the server, and it is the one production services run. It handles every request in its own goroutine, so handlers are ordinary blocking functions: no <code>async def</code>, no worker-process tuning. The other side of that is what chapter 6 prepared you for: <strong>handlers run concurrently</strong>, and anything they share must be safe to share. There is no pydantic here either. You decode into a struct, then validate by hand. Third-party routers such as chi exist, but since Go 1.22 the standard <code>ServeMux</code> handles methods and path parameters well enough that this course does not need one.</p>
+</aside>
+
+<h2>The API</h2>
+<table>
+  <thead><tr><th>Route</th><th>Request body</th><th>Success</th><th>Errors</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /select</code></td><td>none</td><td>200 <code>{"request_id": "...", "arm": 2}</code></td><td></td></tr>
+    <tr><td><code>POST /reward</code></td><td><code>{"request_id": "...", "reward": 1}</code></td><td>204, no body</td><td>400 malformed or missing field · 404 unknown ID · 409 ID already rewarded · 413 body too large · 422 reward outside [0, 1]</td></tr>
+    <tr><td><code>GET /stats</code></td><td>none</td><td>200 policy name, call counts, per-arm pulls and means</td><td></td></tr>
+    <tr><td><code>GET /healthz</code></td><td>none</td><td>200 <code>{"status": "ok"}</code></td><td></td></tr>
+  </tbody>
+</table>
+<p>Errors are JSON, <code>{"error": "message"}</code>, so a client can always parse the body. The status code carries the category (400 for a request that cannot be understood, 422 for one that is well-formed but has a bad value, 409 for a conflict with existing state) and the message carries the detail. Any other method on these paths gets 405 automatically.</p>
+
+<h2>Step 1: a handler</h2>
+<p>The whole HTTP model rests on a one-method interface:</p>
+<figure class="term"><figcaption><span class="fname">net/http</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">type Handler interface {</span><span class="ln out">    ServeHTTP(ResponseWriter, *Request)</span><span class="ln out">}</span><span class="ln out"></span><span class="ln out">type HandlerFunc func(ResponseWriter, *Request)</span><span class="ln out">func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) { f(w, r) }</span></code></pre></figure>
+<p>A <code>*Request</code> is everything the client sent; a <code>ResponseWriter</code> is where you write the status, headers and body. The second declaration is worth a look: <code>HandlerFunc</code> is a <em>function type</em> that has a method. Any function with the right signature can be converted to a <code>HandlerFunc</code>, and then it satisfies <code>Handler</code>. Chapter 2 said any type can have methods; this is the standard example of a function type doing so, and it is how a plain function becomes a handler.</p>
+<p>The simplest handler in the service:</p>
+<!-- include: ch08/server/server.go#handleHealth diff -->
+<p>The order inside a handler matters: headers must be set before <code>WriteHeader</code> or the first <code>Write</code>, since after that they have gone out. The first <code>Write</code> without a preceding <code>WriteHeader</code> sends 200.</p>
+
+<h2>Step 2: JSON in, JSON out</h2>
+<p>Every response body and every request body in the service is JSON, so the helpers live together:</p>
+<!-- include: ch08/server/json.go -->
+<p>Details:</p>
+<ul>
+  <li><strong>Struct tags</strong> (<code>`json:"request_id"`</code>) map Go's capitalised field names to JSON keys. Only exported fields are encoded.</li>
+  <li><strong><code>DisallowUnknownFields</code></strong> turns a misspelled field (<code>"rewrad": 1</code>) into a 400 instead of a silently ignored value that would look like a missing reward.</li>
+  <li><strong>The trailing-data check</strong> matters because <code>Decode</code> reads one value and stops. <code>{...} {...}</code> would otherwise pass.</li>
+  <li><strong><code>http.MaxBytesReader</code></strong> caps how much of the body is read. Without it, a client can send gigabytes. It reports the overflow as an <code>*http.MaxBytesError</code>, which <code>badBody</code> finds with <code>errors.As</code> (chapter 3) and turns into 413.</li>
+  <li>After <code>WriteHeader</code>, an encoding failure cannot change the status, so <code>writeJSON</code> discards it deliberately, with a comment saying why.</li>
+</ul>
+
+<h2>Step 3: remembering selections</h2>
+<p>A reward names an earlier selection, so the service has to remember which arm each request ID returned. For now that is a map behind a mutex, the same pattern as chapter 6:</p>
+<!-- include: ch08/server/pending.go -->
+<p><code>claim</code> does the lookup and the "mark as rewarded" step under one lock. That makes rewards idempotent: a client that retries after a network timeout gets a 409 and the policy is not updated twice. Two separate steps (look up, then mark) would let two concurrent retries both succeed.</p>
+<p>This store only grows, and it vanishes on restart. A selection whose reward never comes stays in memory forever. Chapter 10 fixes both.</p>
+
+<h2>Step 4: the server and its handlers</h2>
+<p>A <code>Server</code> holds the policy (wrapped in the <code>Locked</code> type from chapter 6, since concurrent requests will call it at the same time), the pending store, and a logger. Its methods are the handlers:</p>
+<!-- include: ch08/server/server.go#Server,New diff -->
+<p>The constructor takes a <code>bandit.SnapshotPolicy</code>, and <code>main</code> needs a way to build one from a spec string. The existing <code>NewPolicy</code> returns a plain <code>Policy</code>, so a small helper uses a <strong>type assertion</strong> to ask whether the value it holds also has <code>Snapshot</code>:</p>
+<!-- include: ch08/bandit/policy.go#NewSnapshotPolicy diff -->
+<!-- include: ch08/bandit/snapshot.go#ArmStat diff -->
+<p><code>pol.(SnapshotPolicy)</code> checks the dynamic type of the interface value. The two-value form (<code>sp, ok := ...</code>) reports failure instead of panicking. The tags added to <code>ArmStat</code> give it lower-case JSON keys for <code>/stats</code>.</p>
+<p>Now the two handlers that do the real work:</p>
+<!-- include: ch08/server/server.go#selectResponse,Server.handleSelect diff -->
+<p><code>handleSelect</code> reuses the HTTP request's own ID as the selection ID. That gives the client one identifier for both the response header and the later reward, and it means the ID exists before the handler runs, courtesy of the middleware below.</p>
+<!-- include: ch08/server/server.go#rewardRequest,Server.handleReward diff -->
+<ul>
+  <li><code>Reward</code> is a <code>*float64</code>. A plain <code>float64</code> cannot tell "the client sent 0" from "the client sent nothing", and both would look like a reward of zero. A nil pointer means the key was absent.</li>
+  <li>The checks run cheapest first, and everything is validated before the pending store is touched. A malformed request must not use up a request ID.</li>
+  <li>The reward test is written <code>!(r &gt;= 0 &amp;&amp; r &lt;= 1)</code> for the same NaN reason as in chapter 3, even though JSON cannot carry a NaN. The habit is cheap.</li>
+  <li>Success is <code>204 No Content</code>: nothing to say beyond "recorded".</li>
+</ul>
+<!-- include: ch08/server/server.go#statsResponse,Server.handleStats diff -->
+
+<h2>Step 5: routes</h2>
+<!-- include: ch08/server/server.go#Server.Handler diff -->
+<p>Since Go 1.22, a <code>ServeMux</code> pattern can start with a method (<code>"POST /select"</code>) and contain wildcards (<code>"GET /arms/{arm}"</code>, read with <code>r.PathValue("arm")</code>; exercise 2 uses that). A request whose path matches but whose method does not gets <code>405 Method Not Allowed</code> and an <code>Allow</code> header, with no code from you. One consequence: the automatic 404 and 405 responses are plain text, not the JSON used elsewhere. Adding a catch-all <code>"/"</code> route to make 404 JSON would also turn every wrong-method request into a 404, so this service accepts the inconsistency.</p>
+
+<h2>Step 6: middleware</h2>
+<p>Some behaviour belongs to every request: identify it, log it, survive its failures. Repeating that in each handler would be tedious and easy to get wrong. <strong>Middleware</strong> is a function that takes a handler and returns a new one that wraps it:</p>
+<!-- include: ch08/server/middleware.go#Middleware,Chain -->
+<p>The wrapper can run code before calling <code>next.ServeHTTP</code>, after it, or instead of it (to reject a request, as exercise 1 does). <code>Chain</code> applies them so the first listed is outermost. A test records the entry and exit order to prove it:</p>
+<!-- include: ch08/server/server_test.go#TestChainOrder -->
+
+<h3>Request IDs and context values</h3>
+<!-- include: ch08/server/middleware.go#ctxKey,RequestID,requestID -->
+<p>Chapter 7 introduced context values as something to use sparingly, and a request ID is the textbook use: it crosses API boundaries and no function's signature should have to mention it. The key is a private empty struct type, <code>ctxKey</code>, so no other package can accidentally use the same key, and <code>RequestID</code> gives typed access. <code>r.WithContext</code> returns a shallow copy of the request carrying the new context. <code>rand.Text()</code> (Go 1.24) returns 26 random base32 characters from a cryptographic source, enough that IDs will not collide or be guessable. The server generates them itself and ignores a client-supplied <code>X-Request-ID</code>, because a client that could pick its own IDs could collide with someone else's pending selection.</p>
+
+<h3>Logging</h3>
+<p>To log the status code, the middleware needs to see what the handler wrote, and <code>ResponseWriter</code> has no getter for that. The trick is a wrapper that <strong>embeds</strong> the real writer, so every method passes through, and overrides just the two that reveal the status:</p>
+<!-- include: ch08/server/middleware.go#statusRecorder,statusRecorder.WriteHeader,statusRecorder.Write,statusRecorder.Unwrap,logging -->
+<p>This is the embedding from chapter 2 again, applied to an interface: <code>statusRecorder</code> satisfies <code>http.ResponseWriter</code> because the embedded field does. One catch is that optional capabilities of the real writer (flushing, hijacking) are hidden by the wrapper. The <code>Unwrap</code> method lets <code>http.ResponseController</code> find them.</p>
+<p>The logger is a <code>*slog.Logger</code> from <code>log/slog</code>, the standard structured logger. Each call takes a message and alternating key-value pairs, and the output is machine-parseable (<code>key=value</code> here; a JSON handler is a one-line change in chapter 9).</p>
+
+<h3>Recovering from panics</h3>
+<!-- include: ch08/server/middleware.go#recoverPanic -->
+<p>A panic in a handler unwinds that goroutine. Without this middleware, <code>net/http</code> catches it, logs it, and closes the connection without sending any response, so the client sees a dropped connection instead of an error. The deferred function calls <code>recover()</code>, logs the value and stack, and writes a 500 that does not include the panic message (which could leak internals). <code>http.ErrAbortHandler</code> is a deliberate signal to abort a response quietly, so it is re-panicked.</p>
+<p>The order in <code>Handler</code> was chosen with this in mind. <code>recoverPanic</code> is innermost, so <code>logging</code> sees the 500 it writes and logs it. Put recovery outside logging, and a panicking request would never be logged at all.</p>
+
+<h2>Step 7: serving, with timeouts</h2>
+<p>The <code>serve</code> subcommand builds the policy from flags and runs the server until Ctrl-C:</p>
+<!-- include: ch08/serve.go#serveCmd,serve -->
+<p>Points worth knowing:</p>
+<ul>
+  <li><code>http.ListenAndServe</code> is convenient and dangerous: the <code>http.Server</code> it creates has <strong>no timeouts</strong>. A client that opens a connection and sends nothing holds it, and a goroutine, forever. Set at least <code>ReadHeaderTimeout</code>; the others bound the whole request read, the response write, and idle keep-alive connections. Long-lived responses (streaming, server-sent events) need a longer or per-request write deadline.</li>
+  <li>Creating the listener with <code>net.Listen</code> first means "address already in use" fails before the program says it is listening.</li>
+  <li><code>serve</code> takes a listener and a handler rather than an address, so a test can pass <code>127.0.0.1:0</code> (any free port) and learn the port from the listener.</li>
+  <li>On cancellation it calls <code>srv.Close()</code>, which drops connections immediately, including requests in flight. That is acceptable for a first version and not for production; chapter 9 replaces it with <code>Shutdown</code>, which drains.</li>
+</ul>
+<!-- include: ch08/main.go#usage,run diff -->
+
+<h2>Step 8: tests with httptest</h2>
+<p><code>net/http/httptest</code> provides two ways to test HTTP code. Most tests can skip the network entirely: <code>httptest.NewRequest</code> builds a request, <code>httptest.NewRecorder</code> is a <code>ResponseWriter</code> that keeps everything written to it, and calling <code>handler.ServeHTTP(rec, req)</code> runs the handler synchronously. These tests are fast and, because they are synchronous, can assert on log output without waiting:</p>
+<!-- include: ch08/server/server_test.go#do,decode,TestLoggingRecordsTheRequest -->
+<p><code>decode</code> is a generic helper (chapter 4) that unmarshals a recorded body into any type and fails the test with the raw body if it cannot. The validation rules are a table, one row per rejection:</p>
+<!-- include: ch08/server/server_test.go#TestRewardRejections -->
+<!-- transcript: ch08/rejections -->
+<p>The last assertion in that test is easy to skip and important: none of the rejected requests reached the policy.</p>
+<p>The second tool, <code>httptest.NewServer</code>, starts a real server on a random local port, so the test can use an ordinary <code>http.Client</code>. That exercises the real HTTP stack, and it is what the concurrency test uses: 40 clients each select and reward at the same time, and the test checks that no update was lost. Run under <code>-race</code>, it also proves the <code>Locked</code> wrapper and the pending store are used correctly:</p>
+<!-- include: ch08/server/server_test.go#TestConcurrentClients -->
+
+<h2>Step 9: run it and send real requests</h2>
+<p>Build the binary and start the service with UCB1 on three arms. This script starts it, walks through the API with <code>curl</code>, stops it with an interrupt, and prints what the server logged:</p>
+<!-- include: ch08/_examples/session.sh title="_examples/session.sh" -->
+<!-- transcript: ch08/session -->
+<p>Things to see in that output:</p>
+<ul>
+  <li>Every response has an <code>X-Request-Id</code> header, and for <code>/select</code> it equals the <code>request_id</code> in the body. The matching lines in the server log carry the same ID.</li>
+  <li>The reward is accepted once (204), then rejected as a conflict (409) when repeated. The malformed and unknown cases get 422 and 404. <code>GET /select</code> gets 405 with <code>Allow: POST</code> from the mux, in plain text.</li>
+  <li>Timestamps and IDs differ on every run. The rest is deterministic, because the policy is seeded.</li>
+  <li>The log's first <code>/healthz</code> entry is the script's own readiness check.</li>
+  <li>The final <code>stopping</code> line is the interrupt arriving, via the signal-aware context from chapter 7.</li>
+</ul>
+
+<h3>What the three back-to-back selections show</h3>
+<p>Near the end, three selections in a row return arm 1 each time. The first selection returned arm 0 and was rewarded, so UCB1 next wants an arm it has never tried. But arm 1 has no pulls until <em>its</em> reward arrives, and no reward has. A policy only learns from rewards, not from the fact that it made a choice, so until feedback comes back, a deterministic policy repeats itself. <code>TestSelectionsWithoutFeedbackRepeat</code> pins the behaviour down:</p>
+<!-- include: ch08/server/server_test.go#TestSelectionsWithoutFeedbackRepeat -->
+<p>In the chapter 4 simulations, every choice was rewarded before the next one. A real service is different: rewards arrive late, out of order, or never. Randomised policies such as Thompson sampling spread their choices across plausible arms in the meantime, which is one reason they cope better. How much delay costs is the subject of chapters 10 and 12.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch08/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch08/checkpoint -->
+<p>To try the service yourself, run <code>go run . serve -policy thompson</code> in one terminal and, in another, <code>curl -X POST localhost:8080/select</code>.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch08</code>.</p>
+
+<details class="exercise">
+  <summary>1. Bearer-token middleware</summary>
+  <div class="ex-body">
+    <p>Implement <code>BearerAuth(token string)</code> in <code>exercises/ch08/ex1</code>. It returns a <code>func(http.Handler) http.Handler</code> that lets a request through only if it carries <code>Authorization: Bearer &lt;token&gt;</code> with the exact token. Otherwise it responds 401 with a <code>WWW-Authenticate</code> header and a JSON body, and never calls the wrapped handler. Compare tokens with <code>crypto/subtle.ConstantTimeCompare</code>.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch08/ex1/reference/auth.go#BearerAuth -->
+    <p>The early <code>return</code> after writing the 401 is the whole point of middleware that rejects: forget it and the request continues into the protected handler as well. <code>strings.CutPrefix</code> both tests for the scheme and strips it. A plain <code>==</code> on secrets can leak, through timing, how many leading bytes were right; the constant-time compare removes that signal. Note also that the expected token is converted to bytes once, outside the per-request function.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. A route with a path parameter</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/ch08/ex2</code>, implement <code>Routes(stats func() []ArmStat) http.Handler</code> with two routes: <code>GET /arms</code> returns all arms as a JSON array, and <code>GET /arms/{arm}</code> returns one. A non-numeric arm is 400; a number outside the slice is 404. Read the wildcard with <code>r.PathValue</code>.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch08/ex2/reference/arms.go#Routes -->
+    <p>The pattern with <code>{arm}</code> matches exactly one path segment. <code>strconv.Atoi</code> distinguishes "not a number" (an error, so 400) from "a number that does not exist" (a range check, so 404), which are different client mistakes. Calling <code>stats()</code> inside each handler, not once at setup, means every request sees current data. The mux supplies the 405 for other methods without any code.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Shed load with a concurrency limit</summary>
+  <div class="ex-body">
+    <p>Implement <code>MaxInFlight(n int)</code> in <code>exercises/ch08/ex3</code>: middleware that allows at most <code>n</code> requests inside the wrapped handler at once. When all slots are busy, a new request must not queue: it gets an immediate <code>503</code> with <code>Retry-After: 1</code>.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch08/ex3/reference/inflight.go#MaxInFlight -->
+    <p>This is chapter 7's semaphore combined with <code>select</code> and a <code>default</code> case: the send on a full buffered channel would block, so the <code>default</code> turns "no slot free" into an immediate branch. The semaphore is created once, outside the returned functions, so every request shares it. Refusing quickly is usually better than queueing when a backend is slow: queued requests hold connections and memory, and the clients waiting on them have often given up already.</p>
+    </details>
+  </div>
+</details>

@@ -1,0 +1,31 @@
+$ go test -race -count=1 -v -run "TestRewardRejections|TestRoutingErrors|TestChainOrder" ./server
+=== RUN   TestRewardRejections
+=== RUN   TestRewardRejections/not_json
+=== RUN   TestRewardRejections/empty_body
+=== RUN   TestRewardRejections/unknown_field
+=== RUN   TestRewardRejections/two_values
+=== RUN   TestRewardRejections/missing_id
+=== RUN   TestRewardRejections/missing_reward
+=== RUN   TestRewardRejections/wrong_type
+=== RUN   TestRewardRejections/reward_too_big
+=== RUN   TestRewardRejections/reward_negative
+=== RUN   TestRewardRejections/unknown_id
+=== RUN   TestRewardRejections/already_rewarded
+--- PASS: TestRewardRejections (0.00s)
+    --- PASS: TestRewardRejections/not_json (0.00s)
+    --- PASS: TestRewardRejections/empty_body (0.00s)
+    --- PASS: TestRewardRejections/unknown_field (0.00s)
+    --- PASS: TestRewardRejections/two_values (0.00s)
+    --- PASS: TestRewardRejections/missing_id (0.00s)
+    --- PASS: TestRewardRejections/missing_reward (0.00s)
+    --- PASS: TestRewardRejections/wrong_type (0.00s)
+    --- PASS: TestRewardRejections/reward_too_big (0.00s)
+    --- PASS: TestRewardRejections/reward_negative (0.00s)
+    --- PASS: TestRewardRejections/unknown_id (0.00s)
+    --- PASS: TestRewardRejections/already_rewarded (0.00s)
+=== RUN   TestRoutingErrors
+--- PASS: TestRoutingErrors (0.00s)
+=== RUN   TestChainOrder
+--- PASS: TestChainOrder (0.00s)
+PASS
+ok  	banditlab/server	1.022s

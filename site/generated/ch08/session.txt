@@ -1,0 +1,93 @@
+$ go build -o /tmp/banditsim .
+$ BIN=/tmp/banditsim bash _examples/session.sh
+$ curl -i http://localhost:8088/healthz
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-Id: Y56I32XDJUKNTDMCCDLK6B7P77
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 16
+
+{"status":"ok"}
+
+$ curl -i -X POST http://localhost:8088/select
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-Id: PJPYM6MHCL5GCXHSG62Z4JVSTC
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 52
+
+{"request_id":"PJPYM6MHCL5GCXHSG62Z4JVSTC","arm":0}
+
+$ curl -i -X POST -d '{"request_id":"PJPYM6MHCL5GCXHSG62Z4JVSTC","reward":1}' http://localhost:8088/reward
+HTTP/1.1 204 No Content
+X-Request-Id: UX4DZK5PAJH4IMBJDF7QYLA4YU
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+
+
+$ curl -i -X POST -d '{"request_id":"PJPYM6MHCL5GCXHSG62Z4JVSTC","reward":1}' http://localhost:8088/reward
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+X-Request-Id: S6MMW7HXOERCVYIIHRQGEIH3DO
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 56
+
+{"error":"reward already recorded for this request id"}
+
+$ curl -i -X POST -d '{"request_id":"x","reward":7}' http://localhost:8088/reward
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+X-Request-Id: ZEZYO3CO25LNPCSTTLWN7WT45N
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 43
+
+{"error":"reward must be between 0 and 1"}
+
+$ curl -i -X POST -d '{"request_id":"x","reward":1}' http://localhost:8088/reward
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+X-Request-Id: PTHEUDS7XJ255DTMY57WYVW4NI
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 31
+
+{"error":"unknown request id"}
+
+$ curl -i http://localhost:8088/select
+HTTP/1.1 405 Method Not Allowed
+Allow: POST
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+X-Request-Id: 3XGZ5WUZRDMFMMRGYMRJ3NXM64
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 19
+
+Method Not Allowed
+
+$ for i in 1 2 3; do curl -s -X POST http://localhost:8088/select; done
+{"request_id":"FJS6VCKAHIGDIEBDANWJ375HLL","arm":1}
+{"request_id":"TC2S4ZWY6AIQAZL3VFYN7ECO2A","arm":1}
+{"request_id":"7BQT7HHABXZ6CIYPBM55PIDBL6","arm":1}
+
+$ curl -i http://localhost:8088/stats
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-Id: TLUDXVA2SEPX7I5ZR7HFQJ4LEF
+Date: Wed, 30 Sep 2026 00:38:27 GMT
+Content-Length: 138
+
+{"policy":"ucb1","selects":4,"updates":1,"arms":[{"arm":0,"pulls":1,"mean":1},{"arm":1,"pulls":0,"mean":0},{"arm":2,"pulls":0,"mean":0}]}
+
+--- server log (stderr) ---
+time=2026-09-30T00:38:27.759Z level=INFO msg=listening addr=127.0.0.1:8088 policy=ucb1 arms=3
+time=2026-09-30T00:38:27.762Z level=INFO msg=request id=4NTGYVRZHDNJFOWZPBBFBLOWGY method=GET path=/healthz status=200 bytes=16 duration=43.377µs
+time=2026-09-30T00:38:27.769Z level=INFO msg=request id=Y56I32XDJUKNTDMCCDLK6B7P77 method=GET path=/healthz status=200 bytes=16 duration=30.172µs
+time=2026-09-30T00:38:27.776Z level=INFO msg=request id=PJPYM6MHCL5GCXHSG62Z4JVSTC method=POST path=/select status=200 bytes=52 duration=77.315µs
+time=2026-09-30T00:38:27.786Z level=INFO msg=request id=UX4DZK5PAJH4IMBJDF7QYLA4YU method=POST path=/reward status=204 bytes=0 duration=96.102µs
+time=2026-09-30T00:38:27.795Z level=INFO msg=request id=S6MMW7HXOERCVYIIHRQGEIH3DO method=POST path=/reward status=409 bytes=56 duration=88.87µs
+time=2026-09-30T00:38:27.805Z level=INFO msg=request id=ZEZYO3CO25LNPCSTTLWN7WT45N method=POST path=/reward status=422 bytes=43 duration=74.582µs
+time=2026-09-30T00:38:27.813Z level=INFO msg=request id=PTHEUDS7XJ255DTMY57WYVW4NI method=POST path=/reward status=404 bytes=31 duration=69.301µs
+time=2026-09-30T00:38:27.821Z level=INFO msg=request id=3XGZ5WUZRDMFMMRGYMRJ3NXM64 method=GET path=/select status=405 bytes=19 duration=34.946µs
+time=2026-09-30T00:38:27.828Z level=INFO msg=request id=FJS6VCKAHIGDIEBDANWJ375HLL method=POST path=/select status=200 bytes=52 duration=33.724µs
+time=2026-09-30T00:38:27.834Z level=INFO msg=request id=TC2S4ZWY6AIQAZL3VFYN7ECO2A method=POST path=/select status=200 bytes=52 duration=32.862µs
+time=2026-09-30T00:38:27.842Z level=INFO msg=request id=7BQT7HHABXZ6CIYPBM55PIDBL6 method=POST path=/select status=200 bytes=52 duration=33.52µs
+time=2026-09-30T00:38:27.848Z level=INFO msg=request id=TLUDXVA2SEPX7I5ZR7HFQJ4LEF method=GET path=/stats status=200 bytes=138 duration=150.521µs
+time=2026-09-30T00:38:27.850Z level=INFO msg=stopping

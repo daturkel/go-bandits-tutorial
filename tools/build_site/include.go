@@ -538,7 +538,7 @@ func (b *builder) checkCoverage(chapterID string) error {
 func packageAndImportLines(src string) map[int]bool {
 	out := map[int]bool{}
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "", src, parser.ImportsOnly)
+	f, err := parser.ParseFile(fset, "", src, parser.ImportsOnly|parser.ParseComments)
 	if err != nil {
 		return out
 	}
@@ -546,6 +546,9 @@ func packageAndImportLines(src string) map[int]bool {
 		for n := fset.Position(from).Line; n <= fset.Position(to).Line; n++ {
 			out[n] = true
 		}
+	}
+	if f.Doc != nil {
+		mark(f.Doc.Pos(), f.Doc.End()) // the package doc comment
 	}
 	mark(f.Package, f.Name.End())
 	for _, d := range f.Decls {
