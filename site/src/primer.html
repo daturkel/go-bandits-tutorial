@@ -9,6 +9,7 @@
 <p>Then clone the repository. The examples and the tasks are both in <code>primer</code>: each example is a directory, and the tasks are <code>ex1</code> to <code>ex5</code>. Go programs are built from <strong>modules</strong> (a directory with a <code>go.mod</code> file) that hold <strong>packages</strong> (one directory each, all files declaring the same <code>package</code> name). The examples here are a module called <code>primer</code>; each subdirectory is a small program.</p>
 
 <h2>1. Hello, and the tools</h2>
+<p>Every Go program starts as a <code>main</code> function in a <code>main</code> package. This one prints a line, which makes it the smallest complete program you can run.</p>
 <!-- include: primer/hello/main.go -->
 <p>A program starts in <code>func main()</code> of <code>package main</code>. <code>import</code> lists the packages you use; <code>fmt</code> is the standard library's formatting package. A name from another package is written <code>package.Name</code>, and only names that start with a capital letter are visible outside their package. That one rule is all Go has in place of <code>public</code> and <code>private</code>.</p>
 <!-- transcript: primer/hello -->
@@ -21,6 +22,7 @@
 <p>In <code>./...</code>, the <code>...</code> is a wildcard, like <code>*</code> in a shell glob, and has nothing to do with <code>..</code> (the parent directory). It means "this directory and every package below it", so <code>go test ./...</code> tests the whole project, while <code>go test .</code> tests only the current directory and <code>go test ./bandit</code> only that one package. Directories starting with <code>_</code> or <code>.</code>, and <code>testdata</code>, are skipped.</p>
 
 <h2>2. Values and types</h2>
+<p>Go is statically typed but you rarely write types out. This program declares values the ways you will see most often and prints them, including the defaults that unset variables get.</p>
 <!-- include: primer/values/main.go -->
 <!-- transcript: primer/values -->
 <p>Three things here differ from a dynamically typed language:</p>
@@ -41,6 +43,7 @@
 </details>
 
 <h2>3. Functions and errors</h2>
+<p>Functions are where Go's handling of failure shows up first. This program has a plain function, one that returns a result and an error, and one that passes an error along with added context.</p>
 <!-- include: primer/functions/main.go -->
 <!-- transcript: primer/functions -->
 <p>A function can return several values, and the standard way to report failure is to return an <code>error</code> as the last one. <code>nil</code> means success. The caller checks it with <code>if err != nil</code>, and you will write that line thousands of times. There are no exceptions: an error is an ordinary value you must decide what to do with. <code>fmt.Errorf</code> builds one, and <code>%w</code> wraps another error inside it so that the cause is not lost. (Chapter 3 is about errors properly.)</p>
@@ -60,6 +63,7 @@
 </details>
 
 <h2>4. Control flow</h2>
+<p>Go keeps control flow small: one loop keyword, <code>for</code>, in several shapes, and a <code>switch</code> that does not fall through. This program shows each loop form and both kinds of <code>switch</code> once.</p>
 <!-- include: primer/control/main.go -->
 <!-- transcript: primer/control -->
 <p>Go has one loop keyword, <code>for</code>, in four shapes: the classic three-part loop, a condition only (its <code>while</code>), <code>range</code> over a collection, and <code>range</code> over an integer. <code>switch</code> takes the first matching case and stops; there is no fall-through and no <code>break</code> to write. An <code>if</code> may begin with a short statement, and the variable it declares exists only inside that <code>if</code> and its <code>else</code> branches, which keeps temporary values from leaking into the rest of the function.</p>
@@ -75,6 +79,7 @@
 </details>
 
 <h2>5. Slices and maps</h2>
+<p>Slices and maps are the two collections you will use constantly. This program builds, slices, appends to and counts with both. Note the lines that show two slices sharing elements, and the ones that copy.</p>
 <!-- include: primer/collections/main.go -->
 <!-- transcript: primer/collections -->
 <p>A <strong>slice</strong> is the everyday list. It is a small header (a pointer to an array, a length and a capacity), so assigning a slice or slicing one, as in <code>a[:2]</code>, gives you another view onto the <em>same</em> elements. That is why changing <code>b[0]</code> changed <code>a</code> above. When you need independence, copy with <code>slices.Clone</code>. <code>append</code> returns the (possibly new) slice, so you always write <code>a = append(a, x)</code>. <code>make([]int, n)</code> creates a slice of <code>n</code> zeros.</p>
@@ -91,6 +96,7 @@
 </details>
 
 <h2>6. Structs, methods and pointers</h2>
+<p>Go has no classes. A struct holds data and methods are attached to it separately. This program models a bandit arm that records rewards and reports its average; note the constructor that returns a pointer and the pointer receivers on both methods.</p>
 <!-- include: primer/types/main.go -->
 <!-- transcript: primer/types -->
 <p>A <strong>struct</strong> groups fields. A <strong>method</strong> is a function with a receiver written before its name. A receiver of type <code>*Arm</code> (a pointer) works on the caller's value and can change it; a receiver of type <code>Arm</code> would get a copy. Structs are copied when assigned or passed, pointers are not, which the last lines of <code>main</code> demonstrate. Go has no constructors. By convention a function called <code>NewArm</code> returns a ready-to-use <code>*Arm</code>, and lowercase field names keep other packages from bypassing it.</p>
@@ -107,6 +113,7 @@
 </details>
 
 <h2>7. Packages and tests</h2>
+<p>Real projects are split into packages, and Go ships its test runner with the language. Here is a tiny package with one function, followed by its test file. Read the function first, then the test that checks it.</p>
 <!-- include: primer/stats/mean.go -->
 <!-- include: primer/stats/mean_test.go -->
 <!-- transcript: primer/test -->
