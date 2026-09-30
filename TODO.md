@@ -6,13 +6,15 @@
 | --- | --- |
 | Go 1.27.1 | available |
 | Module proxy (`google.golang.org/grpc` fetched) | works, so gRPC chapters can be compile-verified |
-| `protoc` | **not installed**; chapter 13 will need `protoc` (or `buf`) to be installed or fetched via the Go module proxy |
+| `protoc` | **not installed**; chapter 13 uses `buf` (a Go program installed with `go install`), which compiles the schema itself, so `protoc` is not needed |
 | Docker CLI and Compose plugin | installed, but **the Docker daemon is not running**, so images cannot be built or containers run here |
 | PostgreSQL 16 server binaries (`/usr/lib/postgresql/16/bin`) | present and used: chapter 10's store, integration tests and demos ran against a real server started by `tools/pg.sh` |
 | `redis-server` | present, but Redis is only described (a labelled design note in chapter 10), not implemented or tested |
 | Python 3.11 | available (chapter 14 client) |
 
 ## Not yet verified
+
+- Chapter 13: services talk plaintext gRPC; TLS and mutual TLS are described, not run. The generated code was produced by `buf` v1.73.0 with `protoc-gen-go` and `protoc-gen-go-grpc` v1.6.2 built with a Go 1.26 toolchain (the plugins require it); a reader's newer versions will produce slightly different generated files. The aggregator is a single instance; its restart was exercised (policy instances kept answering and resubscribed), but a second aggregator, or a partition between it and the store, was not.
 
 - Chapter 12: the three-replica demo runs on one machine (processes on different ports, one local PostgreSQL), not behind a real load balancer; its regret and request counts vary from run to run. The `sweep` simulation assumes instant rewards and strict round-robin routing. The `Sync` race (a reward applied to the policy between the store read and the restore is counted twice for one interval) is documented, and there is no test that provokes it.
 
@@ -25,5 +27,5 @@
 
 ## Deferred
 
-- Chapters 13, 14 and the capstone (see `site/src/chapters.json` for status).
+- Chapter 14 and the capstone (see `site/src/chapters.json` for status).
 - Timing figures in transcripts (`go test`, benchmarks) come from the machine that ran `tools/transcripts.sh` and will differ on yours. Seeded simulation output is exact.

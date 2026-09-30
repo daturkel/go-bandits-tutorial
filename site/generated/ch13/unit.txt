@@ -1,0 +1,8 @@
+$ go test -race -count=1 ./internal/rpcx ./internal/services/... ./internal/daemon ./cmd/banditrpc 2>&1
+ok  	banditlab/internal/rpcx	1.305s
+ok  	banditlab/internal/services	1.107s
+ok  	banditlab/internal/services/aggregator	1.193s
+ok  	banditlab/internal/services/feedback	1.049s
+ok  	banditlab/internal/services/policy	1.068s
+ok  	banditlab/internal/daemon	1.021s
+ok  	banditlab/cmd/banditrpc	1.065s

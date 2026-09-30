@@ -1,0 +1,51 @@
+$ go build -o /tmp/g13/ ./cmd/aggregatord ./cmd/feedbackd ./cmd/policyd ./cmd/banditrpc
+$ DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' BIN=/tmp/g13 bash _examples/services.sh
+$ banditrpc -addr :9190 health
+SERVING
+
+== three selections on policy A, none rewarded yet ==
+request_id=AAM4XDO463T2HQMJT3HP7LM76X arm=0
+request_id=F2XU7QDJEY4T7B6SB6QJM2RI3U arm=1
+request_id=W43J6V3PO6ZPNX5GM5CVSGTSTH arm=2
+
+== reward the first two through the feedback service ==
+recorded on arm 0
+recorded on arm 1
+
+== policy B never saw those selections, but knows their outcome ==
+policy=ucb1 snapshot=2
+  arm 0: pulls=1 mean=1.000 pending=0
+  arm 1: pulls=1 mean=0.000 pending=0
+  arm 2: pulls=0 mean=0.000 pending=1
+
+== what the aggregator holds ==
+version=2 arm0=1/1 arm1=1/0 arm2=0/0
+
+== status codes ==
+reward again:      banditrpc: AlreadyExists: reward already recorded for this request id
+unknown id:        banditrpc: NotFound: unknown or expired request id
+reward out of range: banditrpc: InvalidArgument: reward must be between 0 and 1
+deadline of 1ns:   banditrpc: DeadlineExceeded: context deadline exceeded
+
+== a batch of rewards on one stream ==
+accepted=4 rejected=1
+
+== the aggregator goes away; policy A keeps answering ==
+request_id=PFKG2M3BN2S5GEV4PFADCFRZSI arm=1
+after it comes back, policy B still knows every reward:
+policy=ucb1 snapshot=1
+  arm 0: pulls=5 mean=1.000 pending=0
+  arm 1: pulls=1 mean=0.000 pending=1
+  arm 2: pulls=0 mean=0.000 pending=1
+
+== shutdown: SIGTERM to every daemon ==
+aggregatord exited with status 0
+feedbackd exited with status 0
+policyd-a exited with status 0
+policyd-b exited with status 0
+
+== selected log lines ==
+level=INFO msg=stopping service=aggregatord
+level=INFO msg=stopping service=feedbackd
+level=INFO msg=stopping service=policyd
+level=WARN msg="lost the aggregator, will retry" service=policyd

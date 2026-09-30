@@ -1,0 +1,7 @@
+$ buf lint && echo "buf lint: no problems"
+buf lint: no problems
+$ buf generate
+$ wc -l internal/gen/bandit/v1/*.go
+  852 internal/gen/bandit/v1/bandit.pb.go
+  469 internal/gen/bandit/v1/bandit_grpc.pb.go
+ 1321 total

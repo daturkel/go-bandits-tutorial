@@ -38,6 +38,8 @@ The builder fails if a chapter adds source lines that its page neither shows nor
 
 You need **Go 1.27 or newer** (`go version`). `go.mod` pins the toolchain, so any Go 1.21+ installation downloads the right one on demand.
 
+Chapter 13 also needs `buf`, `protoc-gen-go` and `protoc-gen-go-grpc` to regenerate the protobuf code (the chapter shows the `go install` commands); the generated files are committed, so nothing else needs them.
+
 `solutions/chNN` is a complete, self-contained snapshot of the project at the end of chapter NN, not a diff:
 
 ```sh

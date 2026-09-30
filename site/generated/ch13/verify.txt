@@ -1,0 +1,40 @@
+$ tools/check.sh ch13 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+?   	banditlab/cmd/aggregatord	[no test files]
+ok  	banditlab/cmd/banditd	1.077s
+ok  	banditlab/cmd/banditload	1.240s
+ok  	banditlab/cmd/banditrpc	1.063s
+ok  	banditlab/cmd/banditsim	1.193s
+?   	banditlab/cmd/feedbackd	[no test files]
+?   	banditlab/cmd/policyd	[no test files]
+ok  	banditlab/internal/apps	1.023s
+?   	banditlab/internal/apps/aggregatord	[no test files]
+?   	banditlab/internal/apps/feedbackd	[no test files]
+?   	banditlab/internal/apps/policyd	[no test files]
+ok  	banditlab/internal/bandit	1.416s
+ok  	banditlab/internal/config	1.019s
+ok  	banditlab/internal/daemon	1.030s
+?   	banditlab/internal/daemon/daemontest	[no test files]
+?   	banditlab/internal/gen/bandit/v1	[no test files]
+ok  	banditlab/internal/harness	1.477s
+ok  	banditlab/internal/load	4.209s
+ok  	banditlab/internal/logging	1.017s
+?   	banditlab/internal/metrics	[no test files]
+ok  	banditlab/internal/pool	1.125s
+ok  	banditlab/internal/rpcx	1.317s
+?   	banditlab/internal/rpcx/rpcxtest	[no test files]
+ok  	banditlab/internal/server	1.859s
+ok  	banditlab/internal/services	1.101s
+ok  	banditlab/internal/services/aggregator	1.226s
+ok  	banditlab/internal/services/feedback	1.065s
+ok  	banditlab/internal/services/policy	1.075s
+ok  	banditlab/internal/stat	1.018s
+ok  	banditlab/internal/store	1.346s
+?   	banditlab/internal/store/storetest	[no test files]
+?   	banditlab/internal/wire	[no test files]
+
+PASS: your project satisfies the ch13 tests
+note: the PostgreSQL tests were skipped (BANDIT_TEST_DATABASE_URL is not set); tools/pg.sh start gives you a local database to run them against

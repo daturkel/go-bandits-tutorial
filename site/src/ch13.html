@@ -1,0 +1,202 @@
+<h2>What you will build</h2>
+<p>Three small services that talk to each other over gRPC, replacing the single <code>banditd</code> process for the distributed setup. A <strong>policy service</strong> answers "which arm?". A <strong>feedback service</strong> receives rewards. An <strong>aggregator</strong> merges the counts that come from feedback and streams the merged state to every policy instance. This is the design chapter 12 pointed at: the mergeable counts stay, but the polling loop in every replica is replaced by one place that knows the totals and pushes them out.</p>
+<p>You will write the API in Protocol Buffers, generate the Go code from it, implement the three services, test them in-process over an in-memory connection, and run them as separate processes against one PostgreSQL database. Along the way you meet all the RPC shapes gRPC offers, status codes, deadlines, interceptors, and what graceful shutdown means when some calls never end by themselves.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>Protocol Buffers: messages, field numbers, and how a schema evolves without breaking old clients</li>
+  <li>Code generation with <code>buf</code> (no <code>protoc</code> needed) and what the generated interfaces look like</li>
+  <li>The four RPC shapes; unary, server-streaming and client-streaming are used here</li>
+  <li>Status codes as the error vocabulary between services; deadlines and cancellation propagating across processes</li>
+  <li>Interceptors, gRPC's middleware; the standard health-checking service</li>
+  <li>Broadcasting a change to many waiting goroutines with a closed channel</li>
+  <li>Testing network services without a network (<code>bufconn</code>)</li>
+  <li>Graceful shutdown when a service has long-lived streams</li>
+</ul>
+
+<h2>Should you split it at all?</h2>
+<p>Often not. A single binary is easier to run, debug, deploy and reason about; chapter 12 already showed it scaling out with replicas. Splitting buys three specific things, and you should want at least one of them:</p>
+<ul>
+  <li><strong>Different scaling.</strong> Selecting arms is on the request path of every user; recording rewards can lag behind by seconds without anyone noticing. They want different numbers of instances.</li>
+  <li><strong>Different failure behaviour.</strong> If the aggregator is down, policy instances should keep answering from their last snapshot. In one process that separation does not exist.</li>
+  <li><strong>Different owners.</strong> In a larger organisation the team that collects feedback is not the team that serves decisions, and an explicit API is the agreement between them.</li>
+</ul>
+<p>The costs are real: every call is now a network call that can be slow, fail halfway or arrive twice; the API is a contract you must evolve carefully; and there are more things to run. This chapter is about paying those costs deliberately.</p>
+<p>The shape of the system:</p>
+<ul>
+  <li><strong>Select path:</strong> client → <em>policy</em> (choose an arm, record the selection as pending in the store)</li>
+  <li><strong>Reward path:</strong> client → <em>feedback</em> (claim the pending selection in the store, add the reward to the totals) → <em>aggregator</em> (merge the delta, publish)</li>
+  <li><strong>Learn path:</strong> <em>aggregator</em> → every <em>policy</em> instance, over a stream of snapshots</li>
+</ul>
+<p>The PostgreSQL store from chapter 10 stays the source of truth and the place selections are matched to rewards. The aggregator is a fast path in front of it, not a replacement, and it reconciles against the store, as step 5 shows.</p>
+
+<h2>Step 1: the API, in protobuf</h2>
+<p>Protocol Buffers is a schema language and a compact binary encoding. You describe messages and services in a <code>.proto</code> file; tools generate the types and the client and server code for Go, Python, Java and others from it. That is why it is the usual choice between services written in different languages, and chapter 14 will call this API from Python.</p>
+<!-- include: ch13/proto/bandit/v1/bandit.proto -->
+<p>Things to notice:</p>
+<ul>
+  <li><strong>Field numbers are the identity of a field</strong> on the wire (<code>= 1</code>, <code>= 2</code>), not the names. You may rename a field freely; you may never change or reuse a number. You can add a field at any time: old readers skip numbers they do not know, and new readers see the zero value in messages from old writers. This is how a service and its clients can be upgraded at different times.</li>
+  <li><strong>Every field has a zero default</strong> (0, empty string). A message cannot tell "reward = 0" from "reward not sent" for plain scalars. That is why the services validate what they receive, and why <code>RewardRequest</code> is checked for an empty id.</li>
+  <li><strong>Package and version in the name</strong> (<code>bandit.v1</code>): when a breaking change is unavoidable you publish <code>v2</code> alongside and migrate callers.</li>
+  <li><strong>Each RPC has its own request and response type</strong>, even when a message would be empty (<code>SelectRequest {}</code>). Adding a field to one call later then does not touch any other. <code>buf lint</code> enforces this.</li>
+  <li><strong><code>stream</code> marks the streaming side.</strong> <code>RewardBatch</code> is <em>client-streaming</em>: many requests in, one response at the end. <code>Watch</code> is <em>server-streaming</em>: one request in, responses for as long as the caller stays. A call with <code>stream</code> on both sides is bidirectional; this API does not need one.</li>
+  <li><code>Report</code> takes <strong>deltas</strong>, never running totals. Adding a total twice counts it twice; adding a delta once is exactly what happened. The exercise in chapter 12 built the tool for computing them.</li>
+</ul>
+
+<h2>Step 2: generating Go</h2>
+<p>You need three tools. <code>buf</code> reads the schema and drives the generators, which means you do not need the <code>protoc</code> compiler installed. <code>protoc-gen-go</code> generates the message types and <code>protoc-gen-go-grpc</code> the service code. All three are Go programs:</p>
+<pre><code>go install github.com/bufbuild/buf/cmd/buf@latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest</code></pre>
+<p>They land in <code>$(go env GOPATH)/bin</code>, which must be on your <code>PATH</code>. Two small config files tell <code>buf</code> where the schema is and what to run:</p>
+<!-- include: ch13/buf.yaml -->
+<!-- include: ch13/buf.gen.yaml -->
+<p>The project gains its first dependencies with real weight: gRPC and the protobuf runtime that the generated code uses.</p>
+<pre><code>go get google.golang.org/grpc@v1.84.0</code></pre>
+<p>Then lint and generate:</p>
+<!-- transcript: ch13/generate -->
+<!-- copy: ch13/internal/gen/bandit/v1/bandit.pb.go why="it is generated from the schema and not meant to be read or edited" -->
+<!-- copy: ch13/internal/gen/bandit/v1/bandit_grpc.pb.go why="it is generated from the schema; run buf generate to produce it yourself, or copy it to skip installing the tools" -->
+<p>Generated files are committed here so that a reader without the tools can still build the project, and so that a change to the schema shows up in code review as a change to the code it produces. Never edit them: the next <code>buf generate</code> overwrites your changes.</p>
+<p>The generated file that matters most is the service code. For each service you get a client interface and a server interface:</p>
+<!-- include: ch13/internal/gen/bandit/v1/bandit_grpc.pb.go#PolicyServiceClient,PolicyServiceServer,UnimplementedPolicyServiceServer -->
+<p>A server is any type with those methods. Embedding <code>UnimplementedPolicyServiceServer</code> in your own struct supplies a default for every method (returning the status <code>Unimplemented</code>), so adding an RPC to the schema does not break every existing server at compile time. The streaming RPCs use generic stream types instead of methods per message:</p>
+<!-- include: ch13/internal/gen/bandit/v1/bandit_grpc.pb.go#FeedbackService_RewardBatchServer,AggregatorService_WatchServer -->
+
+<h2>Step 3: the edge of the program</h2>
+<p>Generated message types are for the wire. The rest of the program uses <code>bandit.ArmTotals</code> and friends, and a small package converts at the boundary so generated types never leak into the policies:</p>
+<!-- include: ch13/internal/wire/wire.go -->
+<p>The getters (<code>t.GetArm()</code>) generated for every field are safe to call on a nil message and return the zero value. Messages from the network can be missing or malformed, so the code reads them through the getters and validates the result rather than trusting it.</p>
+
+<h2>Step 4: errors as status codes</h2>
+<p>An HTTP service says "404" or "409"; gRPC has its own small vocabulary of status codes (<code>NotFound</code>, <code>AlreadyExists</code>, <code>InvalidArgument</code>, <code>DeadlineExceeded</code>, <code>Unavailable</code>, and a dozen more) that every language shares. A client decides what to do from the code, not from the text: retry on <code>Unavailable</code>, give up on <code>InvalidArgument</code>. <code>FromStore</code> maps what the store returns onto those codes:</p>
+<!-- include: ch13/internal/rpcx/errors.go -->
+<p>The default case matters. An unexpected error (a database driver message, say) becomes a generic <code>Unavailable</code>, never the raw text: the message may contain hostnames or worse, and the client cannot act on it anyway. The details go to the server's log. The test checks a "password" in the underlying error does not reach the caller:</p>
+<!-- include: ch13/internal/rpcx/rpcx_test.go#TestFromStore -->
+
+<h2>Step 5: the aggregator</h2>
+<p>The aggregator holds the merged totals, accepts deltas, and streams the state to anyone watching. Its state is a mutex, the totals, a version number that increases with every change, and a channel:</p>
+<!-- include: ch13/internal/services/aggregator/aggregator.go#Service,New,Service.Report,Service.Reset,Service.set -->
+<p>The odd part is <code>changed</code>. How do you wake an unknown number of goroutines when something changes? A <code>sync.Cond</code> can, but it does not compose with <code>select</code>, so a waiter cannot also watch its context. The pattern used here is to give every change its own channel: waiters grab the current channel and wait for it to be closed; a change closes that channel (waking everyone at once, since a receive from a closed channel returns immediately) and installs a fresh one for the next round.</p>
+<!-- include: ch13/internal/services/aggregator/aggregator.go#Service.Watch,Service.Close -->
+<p>Each loop iteration takes a consistent snapshot under the lock (state, version and the channel to wait on) and sends it if it is new. A slow client skips intermediate versions, which is fine because every message is the full state. Two ways out: the client goes away (<code>ctx.Done()</code>), or the server is shutting down (<code>Close</code>, which sends <code>Unavailable</code> so the client knows to reconnect, step 8 explains why the server has to end the stream itself).</p>
+<p>The aggregator's copy of the totals can fall behind the store: a feedback service records a reward, then crashes before reporting it. The store is the truth, so the aggregator periodically replaces its state from it, and only publishes when something actually differs:</p>
+<!-- include: ch13/internal/services/aggregator/aggregator.go#Service.Reconcile,Service.reconcileOnce,equal,Service.ExpireLoop,validate -->
+<p>That turns a lost message from a permanent error into a delay of at most one reconcile interval. It is the same idea as in chapter 12, with the hierarchy made explicit: the fast path may be wrong for a moment, the slow path fixes it.</p>
+<p>The tests use the real gRPC stack over an in-memory pipe, so they cover serialisation, status codes and the streaming behaviour, without picking ports:</p>
+<!-- include: ch13/internal/rpcx/rpcxtest/rpcxtest.go -->
+<!-- include: ch13/internal/services/aggregator/aggregator_test.go#TestWatchSendsCurrentStateThenChanges,TestConcurrentReports,TestReconcileCorrectsDrift,TestCloseEndsWatchStreamsWithUnavailable -->
+
+<h2>Step 6: the feedback service</h2>
+<p>Feedback validates the reward, claims the pending selection in the store (atomically, as in chapter 10), and tells the aggregator. It knows the aggregator only through a one-method interface, so tests substitute a recorder and the gRPC client is one implementation:</p>
+<!-- include: ch13/internal/services/feedback/feedback.go#reportTimeout,Reporter,Service,New,Service.Reward,check,Service.tell,Service.zero,Service.delta -->
+<p>The choice in <code>tell</code> is the interesting one. Once <code>store.Reward</code> has succeeded, the reward is durable. If telling the aggregator then fails, returning an error to the caller would make <em>them</em> retry a reward that was in fact recorded, and the retry would get <code>AlreadyExists</code>. So the failure is logged and the call succeeds; the aggregator catches up by reconciling. The report also runs on <code>context.WithoutCancel</code> plus its own short timeout: a caller whose deadline is nearly gone should not cause a half-delivered report.</p>
+<p><code>RewardBatch</code> is the client-streaming call. It reads requests until the client signals the end (<code>io.EOF</code>), rewards each, and sends a single summary. It accumulates one delta for the whole batch, so a batch of 10,000 rewards is one report to the aggregator, not 10,000, and that is where <code>Merge</code>-style addition earns its keep:</p>
+<!-- include: ch13/internal/services/feedback/feedback.go#Service.RewardBatch,NewReporter,grpcReporter,grpcReporter.Report -->
+<!-- include: ch13/internal/services/feedback/feedback_test.go#TestRewardBatch,TestReporterFailureDoesNotFailTheCall -->
+
+<h2>Step 7: the policy service</h2>
+<p>The policy service is the one users wait on. It selects, records the selection, and on the side follows the aggregator. It does not update its policy when a reward is handled, because it does not handle rewards; it learns from snapshots.</p>
+<!-- include: ch13/internal/services/policy/policy.go#Service,New,Service.Select,Service.Stats,Service.Apply -->
+<p><code>Apply</code> replaces the policy's totals with the snapshot and refreshes the pending counts from the store, the same two steps as chapter 12's <code>Sync</code>, and remembers the snapshot's version so <code>Stats</code> can report how current this instance is.</p>
+<p>Following the aggregator is a loop that must survive the aggregator going away. If the stream breaks, wait and resubscribe; meanwhile <code>Select</code> keeps answering from the last snapshot. A snapshot that fails validation is logged and skipped, not fatal: an instance that keeps its old view is better than one that drops its connection to a peer that just had a bad moment.</p>
+<!-- include: ch13/internal/services/policy/policy.go#Service.Follow,Service.follow -->
+<!-- include: ch13/internal/services/policy/policy_test.go#TestFollowAppliesSnapshotsAndReconnects -->
+
+<h2>Step 8: interceptors, deadlines, shutdown</h2>
+<p>Middleware for gRPC is an <em>interceptor</em>: a function that receives the call, does something, and calls the next handler. There are separate types for unary and stream calls. Three go on every service here, outermost first: recovery (a panic becomes <code>Internal</code> instead of killing the process; the stack trace goes to the log, not the client), logging (one line per call with the code and duration, at a level that depends on the code), and a default deadline.</p>
+<!-- include: ch13/internal/rpcx/interceptors.go -->
+<p>On deadlines. A gRPC client sets a deadline for a call, and it travels with the call: the server's handler sees it on its <code>context</code>, and so does any further call the handler makes. When the deadline passes, every hop is cancelled, not only the first. This is the same <code>context</code> from chapter 7, now spanning processes. The default-deadline interceptor exists for clients that forget to set one; without it a stuck handler would hold its resources forever. The tests check that the client's own deadline is left alone, that it does reach the handler, and that a panic leaves the server able to answer the next call:</p>
+<!-- include: ch13/internal/rpcx/rpcx_test.go#TestPanicBecomesInternalAndServerSurvives,TestDefaultDeadlineIsAddedOnlyWhenMissing -->
+<p>Then serving. <code>rpcx.Serve</code> registers the gRPC health service (the standard protocol that load balancers, Kubernetes and <code>grpc_health_probe</code> understand), and on shutdown marks every service <code>NOT_SERVING</code> and calls <code>GracefulStop</code>, which stops accepting new calls and waits for running ones. There is one trap. To <code>GracefulStop</code>, a <code>Watch</code> stream is a running call, and one that only ends when the client leaves. An aggregator asked to stop would wait out the whole grace period and then have its connections cut. The <code>OnStopping</code> hook lets the aggregator end its streams first (the integration test below hangs for the full grace period if you remove it and stop the aggregator before its policy services).</p>
+<!-- include: ch13/internal/rpcx/serve.go -->
+<!-- include: ch13/internal/rpcx/rpcx_test.go#TestServeShutsDownGracefully,TestServeGraceExpires -->
+
+<h2>Step 9: three programs from one pattern</h2>
+<p>The three daemons share their scaffolding: read settings from flags and the environment (a flag beats the environment, which beats a default, as in chapter 9), build the logger, cancel a context on SIGINT and SIGTERM, map errors to exit codes. It lives in one package so each daemon is short:</p>
+<!-- include: ch13/internal/daemon/daemon.go -->
+<!-- include: ch13/internal/daemon/store.go -->
+<p>Each daemon is a <code>Run</code> function in its own package (so tests can start it in-process) and a two-line <code>main</code> (the same layout as <code>banditd</code> in chapter 9). The aggregator, the smallest:</p>
+<!-- include: ch13/internal/apps/aggregatord/aggregatord.go -->
+<!-- include: ch13/cmd/aggregatord/main.go -->
+<p>The other two follow the same steps. The feedback daemon connects to the aggregator with <code>grpc.NewClient</code>, which returns immediately and connects on first use, then reconnects by itself when the peer restarts:</p>
+<!-- include: ch13/internal/apps/feedbackd/feedbackd.go -->
+<!-- include: ch13/cmd/feedbackd/main.go -->
+<p>The policy daemon starts from the store's totals so that a restarted instance is right before its first snapshot arrives, then follows the aggregator:</p>
+<!-- include: ch13/internal/apps/policyd/policyd.go -->
+<!-- include: ch13/cmd/policyd/main.go -->
+<p>The connections here use <code>insecure.NewCredentials()</code>: plain text, no authentication. That is right for loopback and for a private network you trust. Between machines you do not fully trust, use TLS, and mutual TLS (each side presents a certificate) if you want services to authenticate each other; gRPC supports both through the same <code>credentials</code> option.</p>
+
+<h2>Step 10: a command-line client</h2>
+<p>You could poke the services with generic tools (<code>grpcurl</code>), but a small client of your own doubles as an example of calling gRPC from Go: <code>grpc.NewClient</code>, a generated client, a deadline on every call, and the code shown by name when a call fails.</p>
+<!-- include: ch13/cmd/banditrpc/main.go -->
+
+<h2>Testing all of it</h2>
+<p>The unit tests above cover each service. Two system tests cover the wiring. The first runs the three services in one process over in-memory connections with a shared in-memory store; a reward for a selection made on policy A must show up on policy B:</p>
+<!-- include: ch13/internal/services/system_test.go#system,newSystem,TestRewardsReachEveryPolicyInstance -->
+<p>Starting a daemon inside a test and finding the port it chose is the same routine the <code>banditd</code> tests of chapter 9 used; it moves into a helper so the three daemons and the client tests can share it:</p>
+<!-- include: ch13/internal/daemon/daemontest/daemontest.go -->
+<p>The second runs four real daemons on TCP ports, against PostgreSQL (it skips without <code>BANDIT_TEST_DATABASE_URL</code>, like the store tests in chapter 10), and stops all of them, checking they exit cleanly:</p>
+<!-- include: ch13/internal/apps/system_test.go#TestServicesOverTCP -->
+<!-- transcript: ch13/integration -->
+<!-- transcript: ch13/unit -->
+
+<h2>Running the system</h2>
+<p>This script starts the four daemons against one database, then drives them with <code>banditrpc</code>:</p>
+<!-- include: ch13/_examples/services.sh title="_examples/services.sh" -->
+<!-- transcript: ch13/services -->
+<p>What the output shows:</p>
+<ul>
+  <li>Policy B reports outcomes for selections made on policy A, and marks the unrewarded selection as pending (<code>pending=1</code> on arm 2). Neither happened through any direct connection between A and B.</li>
+  <li>The four status codes come back by name. A repeated reward is <code>AlreadyExists</code>, an unknown id <code>NotFound</code>, a reward of 5 <code>InvalidArgument</code>, and a call with an impossible deadline <code>DeadlineExceeded</code>.</li>
+  <li>The batch accepted four rewards and rejected the unknown id, in one stream and one report to the aggregator.</li>
+  <li>With the aggregator stopped, policy A still answered. When a new aggregator started, it filled its state from the database on its first reconcile and policy B picked it up, without a restart of anything else.</li>
+  <li>Every daemon exited with status 0 after SIGTERM, the aggregator included.</li>
+</ul>
+<p>Request ids are random, and timings change, so your run will differ in the details.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Check your project against this chapter's reference tests (the PostgreSQL tests are skipped without a database, and the script says so):</p>
+<!-- transcript: ch13/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch13/checkpoint -->
+<p>To try it yourself, start PostgreSQL with <code>tools/pg.sh start</code> and run the script above with <code>DATABASE_URL=$(tools/pg.sh url)</code> after building the four binaries into a directory, as the transcript does.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch13</code>. The module has the gRPC dependency already.</p>
+
+<details class="exercise">
+  <summary>1. Exponential backoff</summary>
+  <div class="ex-body">
+    <p>The policy service waits a fixed time before resubscribing. Implement <code>Backoff(attempt, base, max)</code> in <code>exercises/ch13/ex1</code>: <code>base</code>, then double each attempt, capped at <code>max</code>, without overflowing for large attempt numbers. A peer that has just come back up should not be hit with a full-rate retry storm from every client at once.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch13/ex1/reference/backoff.go#Backoff -->
+    <p>Comparing <code>d &gt; max/2</code> before doubling avoids ever computing a value past <code>max</code>, so nothing can overflow however large <code>attempt</code> is; a shift like <code>base &lt;&lt; attempt</code> wraps to zero or negative around attempt 63. Real clients also add random jitter, as in the chapter 12 exercise, so that clients that failed together do not retry together.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. Limit calls in flight</summary>
+  <div class="ex-body">
+    <p>Write an interceptor in <code>exercises/ch13/ex2</code>, <code>MaxInFlight(n)</code>, that lets at most <code>n</code> unary calls run at once and rejects the rest at once with <code>ResourceExhausted</code>. Slots must come back even when the handler fails or panics.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch13/ex2/reference/limit.go#MaxInFlight -->
+    <p>A buffered channel is a counting semaphore: a send takes a slot and a receive gives it back, and the non-blocking <code>select</code> with a <code>default</code> is what turns "full" into an immediate rejection instead of a wait. <code>defer</code> returns the slot on every path, including a panic. Rejecting early is deliberate: a queue in front of an overloaded service only turns overload into latency, and the client would rather hear "busy" and decide.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Wait for a change</summary>
+  <div class="ex-body">
+    <p>Implement <code>Latest[T]</code> in <code>exercises/ch13/ex3</code>: a value with a version, where <code>Wait(ctx, after)</code> blocks until the version exceeds <code>after</code>. It is the aggregator's <code>Watch</code> loop with gRPC taken away, and a generic type this time.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch13/ex3/reference/latest.go#Latest,NewLatest,Latest.Set,Latest.Wait -->
+    <p>The same close-and-replace channel as the aggregator. <code>Wait</code> reads the value, the version and the channel under one lock, so a <code>Set</code> cannot slip in between "no change yet" and "start waiting"; without that, a wakeup could be lost. A follower that passes the version it last saw never blocks on a change it already has and, if the writer is faster than it, skips straight to the latest.</p>
+    </details>
+  </div>
+</details>

@@ -230,5 +230,19 @@ ch12() {
   t ch12 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12; fi
+ch13() {
+  "$ROOT/tools/pg.sh" start > /dev/null
+  export PATH="$(go env GOPATH)/bin:$PATH"
+  ( unset BANDIT_TEST_DATABASE_URL; verify ch13 )
+  local pgurl="postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable"
+
+  t ch13 generate 'buf lint && echo "buf lint: no problems"' 'buf generate' 'wc -l internal/gen/bandit/v1/*.go'
+  t ch13 unit 'go test -race -count=1 ./internal/rpcx ./internal/services/... ./internal/daemon ./cmd/banditrpc 2>&1'
+  t ch13 integration "BANDIT_TEST_DATABASE_URL='$pgurl' go test -race -count=1 -v -run TestServicesOverTCP ./internal/apps 2>&1 | grep -E '^(--- |ok|FAIL)'"
+  t ch13 services 'go build -o /tmp/g13/ ./cmd/aggregatord ./cmd/feedbackd ./cmd/policyd ./cmd/banditrpc' \
+    "DATABASE_URL='$pgurl' BIN=/tmp/g13 bash _examples/services.sh"
+  t ch13 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13; fi
 for c in "$@"; do "$c"; done

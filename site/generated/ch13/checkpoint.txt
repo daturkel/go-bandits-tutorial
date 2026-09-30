@@ -1,0 +1,43 @@
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+?   	banditlab/cmd/aggregatord	[no test files]
+ok  	banditlab/cmd/banditd	1.066s
+ok  	banditlab/cmd/banditload	1.240s
+ok  	banditlab/cmd/banditrpc	1.057s
+ok  	banditlab/cmd/banditsim	1.191s
+?   	banditlab/cmd/feedbackd	[no test files]
+?   	banditlab/cmd/policyd	[no test files]
+ok  	banditlab/internal/apps	1.020s
+?   	banditlab/internal/apps/aggregatord	[no test files]
+?   	banditlab/internal/apps/feedbackd	[no test files]
+?   	banditlab/internal/apps/policyd	[no test files]
+ok  	banditlab/internal/bandit	1.466s
+ok  	banditlab/internal/config	1.037s
+ok  	banditlab/internal/daemon	1.022s
+?   	banditlab/internal/daemon/daemontest	[no test files]
+?   	banditlab/internal/gen/bandit/v1	[no test files]
+ok  	banditlab/internal/harness	1.558s
+ok  	banditlab/internal/load	4.202s
+ok  	banditlab/internal/logging	1.015s
+?   	banditlab/internal/metrics	[no test files]
+ok  	banditlab/internal/pool	1.119s
+ok  	banditlab/internal/rpcx	1.316s
+?   	banditlab/internal/rpcx/rpcxtest	[no test files]
+ok  	banditlab/internal/server	1.885s
+ok  	banditlab/internal/services	1.127s
+ok  	banditlab/internal/services/aggregator	1.214s
+ok  	banditlab/internal/services/feedback	1.057s
+ok  	banditlab/internal/services/policy	1.075s
+ok  	banditlab/internal/stat	1.017s
+ok  	banditlab/internal/store	1.344s
+?   	banditlab/internal/store/storetest	[no test files]
+?   	banditlab/internal/wire	[no test files]
+$ go run ./cmd/banditsim run -seed 7 -steps 1000
+scenario=easy arms=[0.2 0.5 0.8] steps=1000 seed=7
+
+policy                   reward     regret  pulls per arm
+epsilon-greedy(0.10)        752       36.3  [45 31 924]
+ucb1                        751       46.5  [27 101 872]
+thompson                    781        6.0  [4 12 984]

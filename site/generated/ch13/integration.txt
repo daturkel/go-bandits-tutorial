@@ -1,0 +1,3 @@
+$ BANDIT_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' go test -race -count=1 -v -run TestServicesOverTCP ./internal/apps 2>&1 | grep -E '^(--- |ok|FAIL)'
+--- PASS: TestServicesOverTCP (0.19s)
+ok  	banditlab/internal/apps	1.217s
