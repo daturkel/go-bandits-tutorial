@@ -1,0 +1,57 @@
+# Publishes the tutorial site to GitHub Pages.
+#
+# One-time setup in the repository: Settings > Pages > Build and deployment >
+# Source: "GitHub Actions". After that every push to the default branch
+# publishes, and the workflow can also be run by hand.
+name: Pages
+
+on:
+  push:
+    branches: [main, ccr-03f48ce0-rbfvks]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/build_site/go.mod
+
+      # Rebuild every page from its source and check the internal links. If
+      # the committed pages differ from a fresh build, someone edited a source
+      # page and forgot to rebuild, so fail instead of publishing stale pages.
+      - name: Rebuild the site and check it is up to date
+        run: |
+          (cd tools/build_site && go run . ../..)
+          git diff --exit-code -- site
+
+      # The pages link to ../solutions/... and ../exercises/..., so publish the
+      # repository layout, not only site/, and put a redirect at the root.
+      - name: Assemble the site
+        run: |
+          mkdir _site
+          cp -r site solutions exercises README.md TODO.md _site/
+          touch _site/.nojekyll   # Jekyll would drop directories that start with "_"
+          echo '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=site/"><a href="site/">Learn Go by building a multi-armed bandit service</a>' > _site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

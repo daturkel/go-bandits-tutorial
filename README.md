@@ -90,6 +90,10 @@ tools/transcripts.sh ch04                   # re-run commands, refresh site/gene
 tools/check_exercises.sh                    # starters must fail, references must pass
 ```
 
+## Publishing the site
+
+`.github/workflows/pages.yml` rebuilds the site, fails if the committed pages are out of date, and publishes the repository layout (pages plus `solutions/` and `exercises/`, which the pages link to) to GitHub Pages. Enable it once under Settings > Pages > Source: "GitHub Actions". The site is then at `https://<user>.github.io/<repo>/`.
+
 ## Chapter plan
 
 Part I, language core (CLI simulation): modules and packages; interfaces and methods; errors, tests, benchmarks; generics and the comparison harness.
