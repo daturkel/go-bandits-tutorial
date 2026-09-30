@@ -34,10 +34,10 @@
 <details class="exercise">
   <summary>Your turn: a percentage</summary>
   <div class="ex-body">
-    <p>In <code>primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. Convert to floating point before you divide, and return 0 when <code>total</code> is 0. Run <code>go test</code> in that directory.</p>
+    <p>In <code>primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. It returns the share as a number from 0 to 100, so <code>Percent(1, 4)</code> is <code>25</code>, not <code>0.25</code>. <code>total</code> is always positive. Run <code>go test</code> in that directory.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: primer/ex1/reference/percent.go#Percent -->
-    <p>Dividing two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction.</p>
+    <p>Dividing the two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction, and the multiplication by 100 turns the fraction into a percentage.</p>
     </details>
   </div>
 </details>

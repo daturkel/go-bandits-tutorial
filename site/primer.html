@@ -91,13 +91,13 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 <details class="exercise">
   <summary>Your turn: a percentage</summary>
   <div class="ex-body">
-    <p>In <code>primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. Convert to floating point before you divide, and return 0 when <code>total</code> is 0. Run <code>go test</code> in that directory.</p>
+    <p>In <code>primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. It returns the share as a number from 0 to 100, so <code>Percent(1, 4)</code> is <code>25</code>, not <code>0.25</code>. <code>total</code> is always positive. Run <code>go test</code> in that directory.</p>
     <details class="answer"><summary>Answer</summary>
 <figure class="code">
 <figcaption><span class="fname">ex1/reference/percent.go</span><span class="fmeta">excerpt</span><a class="fsrc" href="../primer/ex1/reference/percent.go">full file</a><button type="button" class="copy" aria-label="Copy code">Copy</button></figcaption>
-<pre tabindex="0"><code><span class="ln" data-n="3"><span class="c">// Percent returns hits as a percentage of total: Percent(1, 4) is 25.</span></span><span class="ln" data-n="4"><span class="c">// If total is 0 there is nothing to divide by, so return 0.</span></span><span class="ln" data-n="5"><span class="k">func</span> <span class="d">Percent</span>(hits, total <span class="b">int</span>) <span class="b">float64</span> {</span><span class="ln" data-n="6">	<span class="k">if</span> total == <span class="n">0</span> {</span><span class="ln" data-n="7">		<span class="k">return</span> <span class="n">0</span></span><span class="ln" data-n="8">	}</span><span class="ln" data-n="9">	<span class="k">return</span> <span class="b">float64</span>(hits) / <span class="b">float64</span>(total) * <span class="n">100</span></span><span class="ln" data-n="10">}</span></code></pre>
+<pre tabindex="0"><code><span class="ln" data-n="3"><span class="c">// Percent returns hits as a percentage of total, on a scale of 0 to 100:</span></span><span class="ln" data-n="4"><span class="c">// Percent(1, 4) is 25, not 0.25. The caller guarantees total is positive.</span></span><span class="ln" data-n="5"><span class="k">func</span> <span class="d">Percent</span>(hits, total <span class="b">int</span>) <span class="b">float64</span> {</span><span class="ln" data-n="6">	<span class="k">return</span> <span class="b">float64</span>(hits) / <span class="b">float64</span>(total) * <span class="n">100</span></span><span class="ln" data-n="7">}</span></code></pre>
 </figure>
-    <p>Dividing two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction.</p>
+    <p>Dividing the two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction, and the multiplication by 100 turns the fraction into a percentage.</p>
     </details>
   </div>
 </details>

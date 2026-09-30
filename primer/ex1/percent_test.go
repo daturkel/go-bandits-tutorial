@@ -14,7 +14,6 @@ func TestPercent(t *testing.T) {
 		{0, 10, 0},
 		{10, 10, 100},
 		{1, 3, 100.0 / 3},
-		{5, 0, 0},
 	}
 	for _, tc := range tests {
 		if got := Percent(tc.hits, tc.total); math.Abs(got-tc.want) > 1e-9 {
