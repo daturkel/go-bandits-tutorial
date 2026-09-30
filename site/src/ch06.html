@@ -1,0 +1,134 @@
+<h2>What you will build</h2>
+<p>A way to share one bandit policy between many goroutines safely, which is what a server's request handlers will need in chapter 8. You will first watch sharing go wrong, in a plain counter and then in the policy itself, using the race detector to find it. Then you will fix it with a mutex-guarded wrapper, <code>Locked</code>, add lock-free call counters with <code>sync/atomic</code>, and measure what all that locking costs.</p>
+<p>Chapter 5's harness needed none of this because its goroutines shared nothing. The moment two goroutines touch the same variable, correctness becomes your problem.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>Data races, lost updates, and why <code>n++</code> is not one operation</li>
+  <li>The race detector: <code>go run -race</code>, <code>go test -race</code></li>
+  <li><code>sync.Mutex</code>, <code>defer Unlock</code>, and guarding a field</li>
+  <li><code>sync/atomic</code> typed values (<code>atomic.Int64</code>, <code>atomic.Pointer</code>)</li>
+  <li><code>sync.RWMutex</code>, and when it does and does not pay off</li>
+  <li><code>go vet</code>'s copylocks check</li>
+  <li>Why one lock does not scale, and what to do instead</li>
+</ul>
+
+<h2>Step 1: see it fail</h2>
+<p>A <strong>data race</strong> is two goroutines accessing the same memory at the same time, at least one of them writing, with nothing to order them. The simplest victim is a counter. <code>counter++</code> looks like one step but is three: read the value, add one, write it back. If two goroutines interleave those steps, both read 41, both write 42, and an increment vanishes. This program runs 100 goroutines that each add 1 ten thousand times, first unprotected, then with a mutex, then with an atomic:</p>
+<!-- include: ch06/_examples/lostupdate/main.go title="_examples/lostupdate/main.go" -->
+<!-- transcript: ch06/lostupdate -->
+<p>The unprotected total is far below a million, and it will be a different number each time you run it. The two correct versions differ in mechanism. A <code>sync.Mutex</code> lets one goroutine at a time through <code>Lock</code>…<code>Unlock</code>. An <code>atomic.Int64</code> performs the read-modify-write as a single indivisible CPU operation.</p>
+
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p>Python threads can lose updates on <code>n += 1</code> as well, because that statement is also several bytecodes. The GIL protects the interpreter's own data structures, not your logic, though it does make individual operations such as <code>list.append</code> effectively atomic. Go gives you no such cushion: nothing is implicitly atomic, and goroutines really do run in parallel, so races show up faster and are more damaging. Go also gives you a detector for them, which is the next step.</p>
+</aside>
+
+<h3>The race detector</h3>
+<p>Go can instrument a program to watch every memory access and report any that are unordered. You turn it on with <code>-race</code> on <code>go run</code>, <code>go build</code> or <code>go test</code>. It slows the program down several times and uses more memory, so it is for development and CI, not production. It reports only races that actually happen during that run, so tests that exercise concurrency are what make it useful, but it has no false positives: every report is a real bug.</p>
+<p>Here is a policy shared by four goroutines with no protection:</p>
+<!-- include: ch06/_examples/race/main.go title="_examples/race/main.go" -->
+<!-- transcript: ch06/race -->
+<p>Two things stand out. The report (addresses and goroutine numbers differ on every run) gives both goroutines and the full stacks for the read and the earlier write, so you can see exactly which lines collide. And the collision is not in bandit code at all, but inside <code>math/rand/v2</code>: a <code>*rand.Rand</code> is <strong>not safe for concurrent use</strong>, because generating a number updates its internal state. Even a policy that only <em>reads</em> its counts in <code>Select</code> would fail this way, as long as it draws a random number. (The <code>Update</code> side has its own race on the counts.) Any type holding a generator inherits that restriction.</p>
+
+<h2>Step 2: a read-only view of a policy</h2>
+<p>A server needs to look at a policy without changing it, to report how many times each arm has been pulled and how good it looks, and that view has to be a copy. Otherwise the caller would be reading live slices while <code>Update</code> writes to them. Add an interface for it, and implement it once on the shared bookkeeping type:</p>
+<!-- include: ch06/bandit/snapshot.go -->
+<p><code>Snapshot</code> is defined on <code>armStats</code>, so embedding (chapter 2) promotes it to <code>EpsilonGreedy</code> and <code>UCB1</code> automatically; Thompson keeps its own counts and defines its own. <code>SnapshotPolicy</code> combines two interfaces by embedding them: any type with all four methods qualifies.</p>
+
+<h2>Step 3: the Locked wrapper</h2>
+<p>The simplest correct fix is to allow one goroutine into the policy at a time:</p>
+<!-- include: ch06/bandit/locked.go -->
+<p>Points to notice:</p>
+<ul>
+  <li><strong>The mutex sits next to what it guards</strong> and the comment says so. Go does not enforce the association; the convention is that every access to <code>p</code> holds <code>mu</code>.</li>
+  <li><strong><code>defer l.mu.Unlock()</code></strong> right after <code>Lock</code> releases the mutex on every return path, including a panic. Forgetting to unlock on one branch is a classic bug, and <code>defer</code> removes it at the cost of a few nanoseconds.</li>
+  <li><strong><code>Snapshot</code> returns a copy made while the lock is held.</strong> Returning the policy's own slice would hand out live state that the next <code>Update</code> modifies, and the lock would protect nothing.</li>
+  <li><strong>The call counters are atomics, outside the mutex.</strong> They are independent single numbers, which is what atomics are for, and reading them never has to wait for a <code>Select</code> in progress. A metrics endpoint can call <code>Calls</code> as often as it likes.</li>
+  <li><strong><code>Name</code> takes no lock.</strong> It reads only data fixed at construction. If it ever read something a method could change, it would need one.</li>
+  <li><strong>Zero values help.</strong> <code>sync.Mutex</code> and the atomic types are ready to use as declared, so <code>&amp;Locked{p: p}</code> is complete.</li>
+</ul>
+
+<h2>Step 4: test under the race detector</h2>
+<p>Under real concurrency the arm each goroutine receives depends on scheduling, so a test cannot check which arms were chosen. It checks what must be true regardless: no update may be lost, and the counters must agree.</p>
+<!-- include: ch06/bandit/locked_test.go#TestLockedConcurrentUse,TestLockedMatchesBarePolicy -->
+<p>The second test guards the other side: wrapping must not change what a single goroutine sees, so a seeded run through <code>Locked</code> matches the bare policy step for step.</p>
+<!-- transcript: ch06/locked-test -->
+<p>Run with <code>-race</code>, the first test hammers each policy with eight goroutines and the detector watches every access. Take the lock out of <code>Select</code> and this test fails with the same kind of report as above.</p>
+<p>This also tells you where <em>not</em> to use <code>Locked</code>. Simulations should stay single-goroutine per policy, as in chapter 5: run many independent simulations in parallel rather than sharing one. A policy hammered from many goroutines gives results that depend on scheduling, so runs are not reproducible even with fixed seeds.</p>
+
+<h2>Step 5: never copy a mutex</h2>
+<p>A <code>sync.Mutex</code> is a value with state. Copy one and you get two independent locks, so the copy protects nothing. The compiler will not stop you, but <code>go vet</code> will:</p>
+<!-- include: ch06/_examples/copylock/main.go title="_examples/copylock/main.go" -->
+<!-- transcript: ch06/copylock -->
+<p>This is why <code>NewLocked</code> returns a pointer and the doc comment says never to copy the value. Any struct that contains a mutex or an atomic gets the same treatment, and it has the same consequence for method receivers: use pointer receivers, as chapter 2 recommended for anything with state. Exercise 2 is a bug of exactly this kind.</p>
+
+<h2>Step 6: what locking costs</h2>
+<p>Mutual exclusion makes the code correct, and turns parallel goroutines into a queue at the lock. Two benchmarks show the effect. <code>b.RunParallel</code> runs the benchmark body on several goroutines at once, and <code>-cpu 1,4</code> repeats it with one and four procs. The first hammers <code>Select</code> plus <code>Update</code>, both writes. The second is 19 <code>Snapshot</code> reads for every <code>Update</code>, comparing <code>Locked</code>'s plain mutex with a reader-writer version:</p>
+<!-- include: ch06/bandit/locked_bench_test.go#rwLocked,rwLocked.Update,rwLocked.Snapshot,BenchmarkSnapshotHeavy -->
+<!-- transcript: ch06/bench -->
+<p>Read <code>ns/op</code> here as wall-clock time divided by total operations, so <strong>lower means higher throughput</strong>. Two results matter.</p>
+<ul>
+  <li><strong>Four goroutines are slower than one.</strong> <code>Select</code> plus <code>Update</code> takes about 196 ns per operation on one proc and about 427 ns on four. Every operation needs the same lock, so the work cannot overlap, and now the lock's cache line also bounces between cores and goroutines are put to sleep and woken. More cores made it worse. A single lock around hot state does not scale, however short the critical section.</li>
+  <li><strong><code>sync.RWMutex</code> is only a modest win even in the case it is designed for.</strong> It allows any number of readers at once, or one writer. With a read-heavy mix on four procs it is about 17% faster than the plain mutex (129 vs. 155 ns). On one proc there is no contention to relieve and the two are indistinguishable (69 vs. 68 ns), because <code>RWMutex</code> does more bookkeeping per lock. The critical section here, copying eight small structs, is so short that lock overhead dominates. <code>RWMutex</code> pays off when readers hold the lock for a long time relative to that overhead. Measure before assuming.</li>
+</ul>
+<p>When a lock does become the bottleneck, the options are to hold it for less time, to <strong>shard</strong> the state so unrelated requests take different locks, or to avoid shared state altogether: give each goroutine its own copy and combine them later. Bandit counts are unusually good at that last one. Successes and failures per arm are just sums, so copies can be added together, which is the idea chapter 12 builds on.</p>
+
+<h2>Choosing a tool</h2>
+<table>
+  <thead><tr><th>Situation</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td>Protect a struct with several fields that change together</td><td><code>sync.Mutex</code> (the default)</td></tr>
+    <tr><td>Many readers, few writers, and long read sections</td><td><code>sync.RWMutex</code>, after measuring</td></tr>
+    <tr><td>One independent counter or flag</td><td><code>atomic.Int64</code>, <code>atomic.Bool</code></td></tr>
+    <tr><td>A read-mostly value replaced wholesale (config, published snapshot)</td><td><code>atomic.Pointer[T]</code> holding an immutable value (exercise 3)</td></tr>
+    <tr><td>Data that one goroutine can own, with others sending it requests</td><td>A goroutine that owns the state and receives on a channel</td></tr>
+    <tr><td>Hand a value from one stage to the next</td><td>A channel</td></tr>
+  </tbody>
+</table>
+<p>The last two rows are the Go proverb "don't communicate by sharing memory; share memory by communicating". It is a useful default when work flows through stages, and a poor one for a shared counter, where a channel round trip costs far more than the mutex it replaces. The proverb says to think about who owns the data, and the answer is sometimes "everyone, behind a lock".</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch06/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory. The <code>-race</code> flag matters more than usual this time:</p>
+<!-- transcript: ch06/checkpoint -->
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch06</code>. Run them with <code>go test -race ./ex1</code> too; the race detector reports things the plain test cannot.</p>
+
+<details class="exercise">
+  <summary>1. Two thread-safe counters</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/ch06/ex1</code>, make <code>LockedCounter</code> safe with a <code>sync.Mutex</code> and <code>AtomicCounter</code> safe with <code>atomic.Int64</code>. Make sure <code>Value</code> is safe to call while other goroutines increment; only the race detector notices if it is not.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch06/ex1/reference/counters.go#LockedCounter,LockedCounter.Inc,LockedCounter.Value,AtomicCounter,AtomicCounter.Inc,AtomicCounter.Value -->
+    <p>Reads need synchronisation too. A reader that skips the lock races with the writers even though it only looks. The atomic version is shorter and faster, but works only because the entire state is one number.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. The struct that ignores its own lock</summary>
+  <div class="ex-body">
+    <p><code>Stats</code> in <code>exercises/ch06/ex2</code> has a mutex, locks it in every method, and still records nothing. Run <code>go vet ./ex2</code>, read what it says, and fix the type without changing the tests.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch06/ex2/reference/stats.go#Stats,NewStats,Stats.Add -->
+    <p>Every method had a value receiver, so each call locked and updated a copy of the struct, and the caller's <code>Stats</code> never changed. Vet reports "passes lock by value". The fix is pointer receivers, plus a constructor that returns <code>*Stats</code>. The lock only means something when all callers share the same one.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. A lock-free cell with a compare-and-swap loop</summary>
+  <div class="ex-body">
+    <p><code>Cell[T]</code> in <code>exercises/ch06/ex3</code> stores an immutable value in an <code>atomic.Pointer[T]</code>. <code>Load</code> and <code>Store</code> are done. Implement <code>Update(f func(T) T) T</code> so that concurrent updates are never lost, using <code>CompareAndSwap</code> in a loop. The starter's read-then-write loses updates.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch06/ex3/reference/cell.go#Cell.Update -->
+    <p><code>CompareAndSwap(old, new)</code> stores <code>new</code> only if the cell still holds <code>old</code>, and reports whether it did. If another goroutine got in between, the swap fails and the loop retries with the fresh value. That is why <code>f</code> may run more than once and must be free of side effects. Readers just call <code>Load</code>: they never block and never see a half-written value, because a published value is never modified. This is the shape chapter 13 uses when an aggregator publishes a new snapshot for replicas to read.</p>
+    </details>
+  </div>
+</details>

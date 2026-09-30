@@ -1,0 +1,4 @@
+$ go run ./_examples/lostupdate
+plain int:      403622 (want 1000000)
+with mutex:    1000000
+with atomic:   1000000

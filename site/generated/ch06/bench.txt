@@ -1,0 +1,13 @@
+$ go test -run "^$" -bench "LockedSelectUpdate|SnapshotHeavy" -cpu 1,4 ./bandit
+goos: linux
+goarch: amd64
+pkg: banditlab/bandit
+cpu: Intel(R) Xeon(R) Processor @ 2.80GHz
+BenchmarkLockedSelectUpdate     	 5605869	       196.3 ns/op
+BenchmarkLockedSelectUpdate-4   	 3085821	       427.3 ns/op
+BenchmarkSnapshotHeavy/Mutex    	18314457	        68.38 ns/op
+BenchmarkSnapshotHeavy/Mutex-4  	 7922994	       154.9 ns/op
+BenchmarkSnapshotHeavy/RWMutex           	17305062	        69.02 ns/op
+BenchmarkSnapshotHeavy/RWMutex-4         	 8247370	       129.1 ns/op
+PASS
+ok  	banditlab/bandit	9.173s

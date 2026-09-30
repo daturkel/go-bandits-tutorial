@@ -103,5 +103,15 @@ ch05() {
   t ch05 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05; fi
+ch06() {
+  verify ch06
+  t ch06 lostupdate 'go run ./_examples/lostupdate'
+  t ch06 race 'go run -race ./_examples/race 2>&1 | head -30'
+  t ch06 copylock 'go vet ./_examples/copylock'
+  t ch06 locked-test 'go test -race -count=1 -v -run "TestLockedConcurrentUse|TestLockedMatches" ./bandit'
+  t ch06 bench 'go test -run "^$" -bench "LockedSelectUpdate|SnapshotHeavy" -cpu 1,4 ./bandit'
+  t ch06 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06; fi
 for c in "$@"; do "$c"; done

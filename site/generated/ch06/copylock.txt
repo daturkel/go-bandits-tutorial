@@ -1,0 +1,5 @@
+$ go vet ./_examples/copylock
+# banditlab/_examples/copylock
+# [banditlab/_examples/copylock]
+_examples/copylock/main.go:10:15: report passes lock by value: banditlab/bandit.Locked contains sync.Mutex
+_examples/copylock/main.go:17:9: call of report copies lock value: banditlab/bandit.Locked contains sync.Mutex

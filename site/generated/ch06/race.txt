@@ -1,0 +1,31 @@
+$ go run -race ./_examples/race 2>&1 | head -30
+==================
+WARNING: DATA RACE
+Read at 0x00c000012158 by goroutine 8:
+  math/rand/v2.(*PCG).next()
+      /usr/local/go1.24.7/src/math/rand/v2/pcg.go:76 +0x3a
+  math/rand/v2.(*PCG).Uint64()
+      /usr/local/go1.24.7/src/math/rand/v2/pcg.go:87 +0x35
+  math/rand/v2.(*Rand).Uint64()
+      /usr/local/go1.24.7/src/math/rand/v2/rand.go:51 +0x69
+  math/rand/v2.(*Rand).Float64()
+      /usr/local/go1.24.7/src/math/rand/v2/rand.go:210 +0x83
+  banditlab/bandit.(*EpsilonGreedy).Select()
+      /home/user/go-bandits-tutorial/solutions/ch06/bandit/epsgreedy.go:33 +0x12
+  main.main.func1()
+      /home/user/go-bandits-tutorial/solutions/ch06/_examples/race/main.go:22 +0x13a
+
+Previous write at 0x00c000012158 by goroutine 7:
+  math/rand/v2.(*PCG).next()
+      /usr/local/go1.24.7/src/math/rand/v2/pcg.go:80 +0xb4
+  math/rand/v2.(*PCG).Uint64()
+      /usr/local/go1.24.7/src/math/rand/v2/pcg.go:87 +0x35
+  math/rand/v2.(*Rand).Uint64()
+      /usr/local/go1.24.7/src/math/rand/v2/rand.go:51 +0xa7
+  math/rand/v2.(*Rand).uint64n()
+      /usr/local/go1.24.7/src/math/rand/v2/rand.go:86 +0xad
+  math/rand/v2.(*Rand).IntN()
+      /usr/local/go1.24.7/src/math/rand/v2/rand.go:195 +0x19b
+  banditlab/bandit.Argmax[go.shape.float64]()
+      /home/user/go-bandits-tutorial/solutions/ch06/bandit/argmax.go:25 +0x1a0
+  banditlab/bandit.(*EpsilonGreedy).Select()
