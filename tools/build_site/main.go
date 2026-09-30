@@ -91,7 +91,7 @@ func build(root string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
-		if pd.Chapter != nil && strings.HasPrefix(pd.Chapter.ID, "ch") {
+		if pd.Chapter != nil && (strings.HasPrefix(pd.Chapter.ID, "ch") || pd.Chapter.ID == "capstone") {
 			if err := b.checkCoverage(pd.Chapter.ID); err != nil {
 				coverageErrs = append(coverageErrs, err)
 			}

@@ -13,5 +13,5 @@
   {"id":"ch12","label":"Chapter 12","part":"Part IV: Distributed","title":"Why naive replicas break the bandit","summary":"Watch replicas diverge, then fix it with mergeable counts and measure the cost of staleness.","status":"ready"},
   {"id":"ch13","label":"Chapter 13","part":"Part IV: Distributed","title":"Splitting into services","summary":"Protobuf and gRPC: a policy service, feedback ingest and an aggregator.","status":"ready"},
   {"id":"ch14","label":"Chapter 14","part":"Part IV: Distributed","title":"Running the system","summary":"Docker, Compose, load balancing, and a Python client for the Go service.","status":"ready"},
-  {"id":"capstone","label":"Capstone","part":"Capstone","title":"End-to-end load test","summary":"Compare policies across replicas with staleness, and decide where to go next.","status":"planned"}
+  {"id":"capstone","label":"Capstone","part":"Capstone","title":"End-to-end load test","summary":"Compare policies across replicas with staleness, and decide where to go next.","status":"ready"}
 ]

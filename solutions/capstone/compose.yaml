@@ -1,0 +1,97 @@
+# The whole system: PostgreSQL, the aggregator, the feedback service and three
+# policy replicas.
+#
+#   docker compose up --build            start everything
+#   docker compose run --rm client       run the Python client against it
+#   docker compose down -v               stop and delete the database volume
+
+x-service: &service
+  restart: unless-stopped
+  stop_grace_period: 15s # the services' own shutdown grace is 10s
+  environment: &env
+    BANDIT_ARMS: "3"
+    BANDIT_LOG_FORMAT: json
+    BANDIT_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-bandit}@db:5432/postgres?sslmode=disable
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bandit}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  aggregatord:
+    <<: *service
+    build: { context: ., target: aggregatord }
+    environment:
+      <<: *env
+      BANDIT_ADDR: ":9092"
+    healthcheck:
+      test: ["CMD", "/banditrpc", "-addr", "localhost:9092", "-timeout", "1500ms", "health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  feedbackd:
+    <<: *service
+    build: { context: ., target: feedbackd }
+    environment:
+      <<: *env
+      BANDIT_ADDR: ":9091"
+      BANDIT_AGGREGATOR: aggregatord:9092
+    healthcheck:
+      test: ["CMD", "/banditrpc", "-addr", "localhost:9091", "-timeout", "1500ms", "health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    ports:
+      - "127.0.0.1:9091:9091" # rewards can be sent from the host
+    depends_on:
+      db: { condition: service_healthy }
+      aggregatord: { condition: service_healthy }
+
+  # No published port and no container_name: three replicas cannot share
+  # either. Other containers reach them by the service name, which Compose's
+  # DNS answers with all three addresses.
+  policyd:
+    <<: *service
+    build: { context: ., target: policyd }
+    deploy:
+      replicas: 3
+    environment:
+      <<: *env
+      BANDIT_ADDR: ":9090"
+      BANDIT_POLICY: ucb1
+      BANDIT_AGGREGATOR: aggregatord:9092
+    healthcheck:
+      test: ["CMD", "/banditrpc", "-addr", "localhost:9090", "-timeout", "1500ms", "health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    depends_on:
+      db: { condition: service_healthy }
+      aggregatord: { condition: service_healthy }
+
+  # A Python program calling the policy replicas. It runs only when asked for:
+  # `docker compose run --rm client`.
+  client:
+    profiles: ["demo"]
+    build: { context: ., dockerfile: clients/python/Dockerfile }
+    environment:
+      BANDIT_POLICY_TARGET: dns:///policyd:9090
+      BANDIT_FEEDBACK_TARGET: feedbackd:9091
+    depends_on:
+      policyd: { condition: service_healthy }
+      feedbackd: { condition: service_healthy }
+
+volumes:
+  pgdata:

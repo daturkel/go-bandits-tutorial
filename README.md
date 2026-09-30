@@ -98,4 +98,11 @@ Part III, serving: `net/http`; project structure and operations; persistence and
 Part IV, distributed: why naive replicas break the bandit; splitting into gRPC services; running the system with Docker and a Python client.
 Capstone: an end-to-end load test comparing policies across replicas with staleness.
 
-See `site/index.html` for which chapters are written.
+See `site/index.html` for which chapters are written. All fifteen pages (chapters 1 to 14 and the capstone) are.
+
+Changes from the original plan, in case you compare against an older copy:
+
+- The toolchain is Go 1.27.1 throughout (the first chapters were written against 1.24 and moved when it became clear that newer library releases needed it).
+- The bandit policies changed once after chapter 8: chapter 12 makes UCB1 count selections that are still waiting for a reward, and keeps the old behaviour as `ucb1:naive`.
+- Protobuf code is generated with `buf`, which needs no `protoc`.
+- Chapter 14 could not build or run containers where it was written; `TODO.md` lists exactly what was and was not checked.

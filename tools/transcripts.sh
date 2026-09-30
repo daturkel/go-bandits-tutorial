@@ -259,5 +259,14 @@ ch14() {
   t ch14 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14; fi
+capstone() {
+  verify capstone
+  t capstone unit 'go test -race -count=1 ./internal/bench ./cmd/banditbench 2>&1'
+  t capstone bench-easy 'go build -o /tmp/banditbench ./cmd/banditbench' '/tmp/banditbench'
+  t capstone bench-needle '/tmp/banditbench -scenario needle -lags 0s,100ms -n 6000'
+  t capstone sim 'go run ./cmd/banditsim sweep -scenario easy -replicas 3 -steps 4000 -seeds 40 -intervals 0,1000,100,10,1'
+  t capstone checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14 capstone; fi
 for c in "$@"; do "$c"; done

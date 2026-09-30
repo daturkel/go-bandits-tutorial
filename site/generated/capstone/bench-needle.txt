@@ -1,0 +1,8 @@
+$ /tmp/banditbench -scenario needle -lags 0s,100ms -n 6000
+scenario=needle arms=[0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.3] replicas=3 users=12 selections=6000 repeats=3 reward-delay=2ms
+
+regret per 1000 selections (± standard error), share of selections on the best arm
+
+lag                 epsgreedy:0.1                   ucb1               thompson
+0s             21.7 ± 3.6  ( 89%)     71.5 ± 2.9  ( 64%)     13.4 ± 1.1  ( 93%)
+100ms          39.8 ± 3.7  ( 80%)    112.3 ± 1.2  ( 44%)     26.0 ± 1.0  ( 87%)

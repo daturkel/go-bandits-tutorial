@@ -312,6 +312,9 @@ func parseRange(s string) (from, to int, err error) {
 var chRE = regexp.MustCompile(`^ch(\d+)$`)
 
 func previousChapter(id string) string {
+	if id == "capstone" {
+		return "ch14"
+	}
 	m := chRE.FindStringSubmatch(id)
 	if m == nil {
 		return ""

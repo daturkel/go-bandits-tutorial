@@ -1,0 +1,11 @@
+$ go build -o /tmp/banditbench ./cmd/banditbench
+$ /tmp/banditbench
+scenario=easy arms=[0.2 0.5 0.8] replicas=3 users=12 selections=4000 repeats=3 reward-delay=2ms
+
+regret per 1000 selections (± standard error), share of selections on the best arm
+
+lag                 epsgreedy:0.1                   ucb1               thompson
+0s             30.2 ± 1.8  ( 93%)     13.8 ± 0.7  ( 96%)      3.4 ± 0.4  ( 99%)
+20ms           35.6 ± 1.7  ( 92%)     20.2 ± 1.1  ( 95%)      8.2 ± 0.3  ( 98%)
+100ms          55.1 ± 1.8  ( 88%)     38.8 ± 5.3  ( 90%)     33.2 ± 1.7  ( 92%)
+400ms         138.9 ± 1.9  ( 69%)    124.4 ± 1.0  ( 72%)    126.1 ± 1.0  ( 72%)

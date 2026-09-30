@@ -1,0 +1,136 @@
+<h2>What you will build</h2>
+<p>An experiment. Fourteen chapters produced a system whose pieces you have tested one at a time. This chapter runs all of it together, under load, and asks the question the design was built around: <strong>how much does it cost when the replicas' view of the world is out of date, and does the cost depend on which policy they run?</strong> You will write a benchmark that starts the real policy, feedback and aggregator services in one process, connects them with real gRPC streams, puts a controllable delay on the path that carries learned counts back to the policy replicas, drives them with simulated users, and prints a table. Then you will read the table critically, compare it with the simulation from chapter 12, and finish with an honest list of what this system is missing and where to go next.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>A load test as an experiment: one variable at a time, everything else held fixed, repeated enough to see the noise</li>
+  <li>Injecting latency at a well-chosen seam (a client wrapper) instead of touching production code</li>
+  <li>Why per-message delay is different from sleeping after every message (queueing)</li>
+  <li>Reading results with standard errors, and saying "the difference is inside the noise" when it is</li>
+  <li>How a simulation and a system test complement each other</li>
+</ul>
+
+<h2>The experiment</h2>
+<p>Three policy replicas serve twelve simulated users. Each user asks a replica for an arm, waits two milliseconds (the time a person takes to react), and sends the reward to the feedback service. Rewards flow feedback → aggregator → every replica, as in chapter 13. The only thing the experiment changes is the <strong>snapshot lag</strong>: how old a snapshot is by the time a replica sees it. Zero means as fast as the system can go. Larger values stand for a slow link, a busy replica, or a big snapshot. For each policy and each lag, the benchmark runs the same number of selections several times and reports the <em>expected regret per 1,000 selections</em>: for each selection, the gap between the best arm's success rate and the chosen arm's, summed and scaled. Expected regret, not observed reward, because it removes the luck of individual coin flips (chapter 1).</p>
+
+<h2>Step 1: an in-process server</h2>
+<p>Each service runs behind a gRPC server. To keep the network out of the measurement, the servers listen on in-memory pipes (<code>bufconn</code>, from chapter 13), so a call still goes through serialisation, the transport and any streaming, without touching a network card. That also makes the benchmark runnable anywhere without picking ports.</p>
+<p>The lag is added by wrapping the aggregator client. The wrapper implements the same interface as the generated client (<code>pb.AggregatorServiceClient</code>), embeds the real one so every method it does not override passes straight through, and replaces only <code>Watch</code>. That is the seam: production code is untouched and does not know it is being slowed down.</p>
+<!-- include: capstone/internal/bench/inproc.go -->
+<p>The detail worth pausing on is <code>lagStream</code>. The obvious way to delay a stream is to sleep for the lag after every message. That is wrong. If snapshots arrive faster than one per lag, each one waits behind the sleeps of all the earlier ones, so the delay grows with the backlog and after a burst of ten snapshots the last is 10 lags old. That models a receiver that cannot keep up, which is a real failure but not the one being measured. Instead, a goroutine (<code>pump</code>) reads the real stream as fast as messages arrive and stamps each with the time it may be delivered (arrival plus lag); <code>Recv</code> hands them out at those times. Every snapshot is exactly one lag old when the replica sees it. The test checks this by sending ten changes in quick succession and requiring them to arrive together:</p>
+<!-- include: capstone/internal/bench/bench_test.go#TestLagDelaysEachSnapshotIndependently -->
+
+<h2>Step 2: the run</h2>
+<p><code>runOnce</code> builds the whole system, plays the users, and tears everything down again. Read it in three parts. First the wiring, which is chapter 13's <code>newSystem</code> test helper made into production-shaped code, with the lag wrapper around each replica's aggregator client:</p>
+<!-- include: capstone/internal/bench/bench.go#Config,Point,Config.validate,Run -->
+<!-- include: capstone/internal/bench/bench.go#runResult,runOnce,sleep -->
+<p>A few decisions in there, since a benchmark's design decides what its numbers mean:</p>
+<ul>
+  <li><strong>Runs happen one at a time.</strong> They compete for the same cores, and two running together would disturb each other's timing, which is the thing being controlled.</li>
+  <li><strong>A fixed number of selections, not a fixed duration.</strong> Every run does the same amount of work, so regret per 1,000 selections compares like with like even though the machine's speed varies. The time it takes is reported separately as a rate.</li>
+  <li><strong>Each user has its own random stream,</strong> derived from the seed and the user's number, the same way earlier chapters derived streams. Results are reproducible in their inputs. They are not exactly reproducible in outcome, because goroutines interleave differently on every run; that is why there are repeats.</li>
+  <li><strong>Closed-loop users.</strong> Each user waits for its reward call before starting the next selection, so the load adapts to how fast the system answers (chapter 11's distinction). For a study of learning that is what you want; for a capacity test you would use open-loop arrivals.</li>
+  <li><strong>Errors are joined, not swallowed,</strong> and a cancelled context returns an error rather than a partial table.</li>
+</ul>
+
+<h2>Step 3: tests that are honest about timing</h2>
+<p>A test of a timing-dependent system can go wrong in two ways: it can be flaky, or it can be so loose that it proves nothing. The staleness test avoids both by making the effect large. It compares a lag of zero with a lag longer than the whole run (5 seconds, where a run takes well under one). In that case a replica never hears from the aggregator during the run at all, so the difference in regret is not subtle, and a factor of 1.5 is a wide margin against noise:</p>
+<!-- include: capstone/internal/bench/bench_test.go#TestStalenessCostsRegret,TestRunProducesSaneNumbers,TestRunStopsWhenTheContextEnds -->
+<!-- include: capstone/cmd/banditbench/main.go -->
+<!-- transcript: capstone/unit -->
+
+<h2>Results</h2>
+<p>Default settings: the <code>easy</code> scenario (arms at 0.2, 0.5 and 0.8), three replicas, twelve users, 4,000 selections per run, three runs per cell.</p>
+<!-- transcript: capstone/bench-easy -->
+<p>Each cell is regret per 1,000 selections, plus or minus the standard error over the three runs, and the share of selections that went to the best arm. Lower regret is better. Timings depend on the machine and the run, so yours will differ in the digits; the shape should not. What it shows:</p>
+<ul>
+  <li><strong>With fresh snapshots the ranking is the one from chapter 4.</strong> Thompson sampling is best, UCB1 next, epsilon-greedy last (it keeps exploring a fixed 10% forever).</li>
+  <li><strong>Staleness hurts every policy, and it hurts the good ones proportionally more.</strong> From no lag to 100 ms, Thompson's regret rises about tenfold, UCB1's nearly threefold, and epsilon-greedy's less than twofold. A policy that is exploiting a good estimate loses more when the estimate goes stale than one that was exploring anyway.</li>
+  <li><strong>The differences shrink at the largest lag, and the ranking blurs.</strong> At 400 ms the run lasts little more than a second, so a replica has only had a snapshot or two; all three policies are then nearly choosing without learning. The last row can look as if UCB1 edged out Thompson, but the gap is about two standard errors on three runs. Read the row as "everything is bad" and not as a ranking. Judging that properly is exercise 2.</li>
+  <li><strong>Lag is measured in time here, but what matters is how many selections happen in it.</strong> At about three thousand selections a second, 100 ms is a few hundred selections during which a replica does not know about the last few hundred rewards. Double the traffic and the same lag costs twice as much.</li>
+</ul>
+<p>A second scenario, <code>needle</code> (nine arms at 0.10 and one at 0.30), where the best arm is hard to find:</p>
+<!-- transcript: capstone/bench-needle -->
+<p>The ranking here is not the one from the <code>easy</code> scenario. UCB1 is by far the worst even with fresh snapshots: with ten arms and small gaps, its exploration bonus keeps it sampling the nine poor arms for a long time (the same effect chapter 4 measured in a single process). Thompson sampling is best. Staleness roughly doubles the regret of Thompson and epsilon-greedy, but raises UCB1's by about half: a policy that is already exploring a lot has less to lose from old information.</p>
+
+<h2>Against the simulation</h2>
+<p>Chapter 12's simulation asked a similar question with none of the machinery: replicas take turns, every reward is added to shared totals instantly, and replicas refresh from the totals every so many selections.</p>
+<!-- transcript: capstone/sim -->
+<p>The two do not line up number for number, and they should not. The simulation counts staleness in selections, has no reward delay and no concurrency. The benchmark measures it in time, has 12 concurrent users and a 2 ms reward delay, and its runs are short enough that start-up matters. There is also a structural difference the benchmark exposes: in the simulation a replica that never syncs still learns from the rewards <em>it</em> handles, immediately. In the real system a policy replica does not handle rewards at all (the feedback service does), so everything it learns arrives in a snapshot, and with a long lag it learns nothing for a while. That is why the benchmark's largest lag is worse than the simulation's "never". If that matters to you, the fix is a design change (let the policy service also be told of rewards directly), not a tuning one. What they share is the shape: regret climbs steeply as replicas refresh less often, the fast learners lose the most in relative terms, and epsilon-greedy is the least sensitive. That agreement is worth something, because the simulation cannot be wrong about the system's plumbing (it has none), and the benchmark cannot easily separate one cause from another. Together they are stronger than either.</p>
+
+<h2>What to conclude</h2>
+<ul>
+  <li><strong>Pick the sync path from the traffic, not from taste.</strong> The cost of staleness is set by how many selections happen during one lag. A quiet service can tolerate seconds; a busy one cannot. Measure the real lag (the snapshot version in <code>Stats</code> against the aggregator's) and alarm on it.</li>
+  <li><strong>Randomised policies are the safer default for a replicated service.</strong> Thompson sampling did best when snapshots were fresh and was never much worse than the rest when they were stale. UCB1 needs the pending-aware fix from chapter 12 to behave when rewards are late, and deterministic choices on stale counts mean replicas make the same mistake together.</li>
+  <li><strong>Most of the benefit comes from a modest refresh rate.</strong> Both the simulation and the benchmark show diminishing returns: going from "never" to "every 100 selections" recovers most of the loss, and going from there to "every selection" recovers little. Spend engineering effort on making the slow path reliable (the reconcile loop) before making the fast path faster.</li>
+</ul>
+
+<h2>Where to go next</h2>
+<p>This system is a teaching system. It is worth being specific about the distance between it and something you would run for real.</p>
+
+<h3>Running it: Kubernetes</h3>
+<p>Compose is one machine. On Kubernetes the same images become Deployments (a Deployment each for policy, feedback and aggregator), the health command becomes a gRPC probe (<code>livenessProbe.grpc</code>, built into Kubernetes; the health service from chapter 13 is exactly what it speaks), and the policy replicas sit behind a <em>headless</em> Service so that <code>dns:///policyd:9090</code> returns every pod address and the client-side round robin from chapter 14 works unchanged. A Horizontal Pod Autoscaler can scale the policy Deployment on CPU or request rate; the aggregator should stay at one replica until you have thought about what two of them would do (each would hold its own copy of the totals, and both would reconcile from the store, so the answer is "probably fine", but that is not the same as tested). Set <code>terminationGracePeriodSeconds</code> above the services' shutdown grace, for the same reason as <code>stop_grace_period</code> in chapter 14.</p>
+
+<h3>Talking to browsers and partners: REST in front of gRPC</h3>
+<p>gRPC is awkward from a browser and unfamiliar to many partners. <em>gRPC-Gateway</em> generates a REST/JSON reverse proxy from the same <code>.proto</code> files plus a few annotations mapping RPCs to URLs, so <code>POST /v1/select</code> calls <code>Select</code>. The alternative you already have is chapter 8's HTTP server, which can call the gRPC services with the generated client instead of holding a policy itself.</p>
+
+<h3>Seeing inside it: tracing</h3>
+<p>Chapter 11 added metrics and logs. What is still missing is a <em>trace</em>: for one user's reward, the path through feedback, the store and the aggregator, with time spent in each hop. OpenTelemetry provides that. gRPC interceptors (chapter 13) are the place to hook it in, and the trace context travels between services in call metadata, next to the deadline. The single most useful thing to add is the snapshot version to the policy service's response and logs, so that a bad decision can be traced back to how stale the replica was when it made it.</p>
+
+<h3>Learning without exploring: off-policy evaluation</h3>
+<p>You have a log of selections and rewards, and want to know how a <em>new</em> policy would have done, without deploying it. That needs, for every logged decision, the probability the logging policy assigned to the arm it chose (the <em>propensity</em>). Then <em>inverse propensity scoring</em> re-weights the log: a decision the old policy rarely made but the new one favours counts for more. It is unbiased, and its variance explodes if the old policy almost never played something the new one plays often. This service does not record propensities today; Thompson sampling would need them estimated by sampling, and epsilon-greedy has them in closed form. Adding them to the select response and the store is a natural extension, and exercises 1 and 3 build the two pieces (the estimator and the softmax probabilities that make a policy loggable).</p>
+
+<h3>Using what you know about the user: contextual bandits</h3>
+<p>Every arm here has one success rate for everybody. In practice the best arm depends on who is asking: their country, their device, what they did last time. A <em>contextual</em> bandit takes a feature vector with each request and learns a model per arm. LinUCB does this with a linear model and a confidence bound in the direction of each feature; the state per arm becomes a matrix and a vector instead of two counts. The mergeability that made chapter 12 easy still holds (both sums add), which is why the same architecture carries over. What changes is the cost: state grows with the square of the number of features, and the hard part shifts from the bandit to the features.</p>
+
+<h3>When the world moves</h3>
+<p>Everything here assumes an arm's success rate is fixed. Real ones drift: seasons, novelty wearing off, competitors. A policy that trusts a million old observations will be slow to notice. Common remedies are discounting old observations (multiply the counts by a factor slightly under 1 each step), sliding windows, or restarting exploration periodically. All of them change what "mergeable counts" means: a discount applied at different times on different replicas needs a shared clock.</p>
+
+<h3>What this service does not do</h3>
+<p>No authentication or TLS (chapter 13 says how to add them). No rate limiting or quotas per client. No schema migrations beyond <code>CREATE TABLE IF NOT EXISTS</code>, which is fine until the first column changes. A single PostgreSQL primary, so a database outage stops selection (the replicas would keep answering from their last state, but new selections could not be recorded, and this code fails them rather than serving untracked choices). No multi-region story: replicas in two regions would need to decide whether the store, the aggregator or both are shared. Each of these is a project of its own, and each is a reasonable next step.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Check your project against this chapter's reference tests (the PostgreSQL tests are skipped without a database, and the script says so):</p>
+<!-- transcript: capstone/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: capstone/checkpoint -->
+<p>To try it yourself: <code>go run ./cmd/banditbench</code> for the table above, then change one thing at a time: <code>-replicas 1</code>, <code>-reward-delay 20ms</code>, <code>-scenario close</code>, <code>-policy thompson,ucb1:naive</code>. The last one shows what chapter 12's fix for UCB1 is worth when several replicas and late rewards combine.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/capstone</code>.</p>
+
+<details class="exercise">
+  <summary>1. Estimate a policy from someone else's log</summary>
+  <div class="ex-body">
+    <p>Implement <code>IPS(log, target)</code> in <code>exercises/capstone/ex1</code>: the inverse-propensity estimate of the average reward a target policy would have earned, from decisions logged under a different policy with known propensities. Reject logs that cannot support an estimate (empty, propensity outside (0, 1], an arm the target does not cover).</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/capstone/ex1/reference/ips.go#IPS -->
+    <p>Each logged decision contributes <code>target[arm] / propensity * reward</code>. The test builds 200,000 decisions from a policy that mostly plays the worse arms and recovers, to within a percent, the value of a policy that plays the best arm 90% of the time, which was never deployed. The catch is variance: the weight is large exactly when the logging policy rarely chose what the target likes, so a target far from the logging policy gives estimates dominated by a few decisions. That is a reason to keep some exploration in production.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. Is the difference real?</summary>
+  <div class="ex-body">
+    <p>Implement <code>Compare(a, b, z)</code> in <code>exercises/capstone/ex2</code>: given repeated measurements of two policies, say which has the lower mean only if the difference exceeds <code>z</code> standard errors of the difference; otherwise say it is inconclusive. This is the judgement the benchmark's last row asks of you.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/capstone/ex2/reference/compare.go#Compare,meanVar -->
+    <p>The standard error of a difference of independent means is the square root of the sum of the two squared standard errors, not their sum. With fewer than two measurements there is no estimate of noise at all, so the honest answer is "inconclusive", not "equal". Three repeats, as in the benchmark, give a very rough estimate of noise; a real decision deserves more runs, and <code>z</code> of 2 is a convention, not a law.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Probabilities for a policy you can log</summary>
+  <div class="ex-body">
+    <p>Implement <code>Softmax(scores, temp)</code> in <code>exercises/capstone/ex3</code>: turn per-arm scores into a probability distribution, so that a policy built on it can record the propensity of its choices. It must survive scores in the thousands.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/capstone/ex3/reference/softmax.go#Softmax -->
+    <p>Subtracting the largest score first changes nothing mathematically (the same factor cancels from the numerator and the denominator) and makes every exponent at most zero, so nothing overflows. Without it, <code>exp(5000)</code> is infinity and the result is NaN. It is the same trick as computing a logarithm of a sum of exponentials in any numerical code.</p>
+    </details>
+  </div>
+</details>
