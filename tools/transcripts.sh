@@ -118,14 +118,14 @@ ch03() {
 }
 
 ch04() {
-  verify ch04
+  ts ch04 starter-tests 'go test ./bandit 2>&1 | head -8'
   t ch04 compare 'go run . compare -scenario needle -steps 5000 -seeds 100'
   t ch04 compare-easy 'go run . compare -scenario easy -steps 5000 -seeds 100'
   t ch04 compare-close 'go run . compare -scenario close -steps 5000 -seeds 100'
   mkdir -p "$ROOT/site/generated/ch04"
-  (cd "$ROOT/solutions/ch04" && go run . compare -scenario needle -steps 5000 -seeds 100 \
+  (cd "$ROOT/ch04/solution" && go run . compare -scenario needle -steps 5000 -seeds 100 \
      -csv "$ROOT/site/generated/ch04/regret-needle.csv" -svg "$ROOT/site/generated/ch04/regret-needle.svg" >/dev/null)
-  (cd "$ROOT/solutions/ch04" && go run . compare -scenario close -steps 5000 -seeds 100 \
+  (cd "$ROOT/ch04/solution" && go run . compare -scenario close -steps 5000 -seeds 100 \
      -svg "$ROOT/site/generated/ch04/regret-close.svg" >/dev/null)
   t ch04 csv-head 'go run . compare -scenario needle -steps 5000 -seeds 100 -csv /tmp/regret.csv > /dev/null' 'head -n 6 /tmp/regret.csv' 'wc -l /tmp/regret.csv'
   t ch04 svg-head 'go run . compare -scenario needle -steps 5000 -seeds 100 -svg /tmp/regret.svg > /dev/null' 'head -n 4 /tmp/regret.svg | cut -c1-140' 'grep -c "<polyline" /tmp/regret.svg'

@@ -3,93 +3,168 @@
 <!-- svg: ch04/regret-needle.svg caption="Cumulative regret on the needle scenario (nine arms at 0.10, one at 0.30), mean of 100 seeds. The chart is drawn by the code in this chapter from the harness's output." -->
 <p>Generics arrive along the way, because Thompson sampling and the harness both have small pieces that are the same for several types. Just as important is where they do <em>not</em> help, and the chapter marks both.</p>
 
-<h2>Concepts introduced</h2>
+<h2>The Go in this chapter</h2>
 <ul>
-  <li>Type parameters, constraints, and type inference</li>
-  <li><code>cmp.Ordered</code>, custom constraint interfaces, and the <code>~</code> operator</li>
-  <li>When generics earn their place, and when an interface or a plain function is better</li>
-  <li>Bayesian bandits: Beta posteriors and Thompson sampling</li>
-  <li><code>encoding/csv</code>, <code>strings.Builder</code>, and writing to any <code>io.Writer</code></li>
-  <li>Generating an accessible, themeable SVG from code</li>
-  <li>Subcommands with <code>flag.FlagSet</code></li>
+  <li><strong>Type parameters and constraints.</strong> <code>[T cmp.Ordered]</code>, <code>[T Number]</code>, and unions with <code>~</code>.</li>
+  <li><strong>Type inference.</strong> Why callers almost never write the type arguments.</li>
+  <li><strong>When not to use generics.</strong> An interface, or a plain function, is often the better tool.</li>
+  <li><strong>Generic types</strong> and their zero values (in the extra tasks).</li>
+  <li><strong>Writing to any <code>io.Writer</code></strong>, <code>encoding/csv</code>, <code>defer</code>, and subcommands with <code>flag.FlagSet</code> (all given, all explained).</li>
 </ul>
 
-<h2>Step 1: Thompson sampling</h2>
-<p>Epsilon-greedy explores blindly and UCB1 explores by a formula. Thompson sampling asks a more direct question: <em>given what I have seen, what could each arm's true probability be?</em></p>
-<p>For a Bernoulli arm the answer has a closed form. Start with a uniform belief, <em>Beta(1, 1)</em>. After <em>s</em> successes and <em>f</em> failures the belief becomes <em>Beta(1 + s, 1 + f)</em>: the Beta distribution is the <strong>conjugate prior</strong> for Bernoulli data, so updating means adding to two counters. To choose an arm, draw one sample from each arm's Beta and pull the arm with the largest draw. An arm with little data has a wide posterior and will sometimes draw high (exploration); an arm with a lot of data and a low mean will almost never win (exploitation). No ε and no bonus formula to tune.</p>
-<p>Those two counters per arm are worth remembering: they are plain sums, and in chapter 12 they are what lets replicas combine what they have each learned.</p>
-<!-- include: ch04/bandit/thompson.go diff -->
-<p>The standard library's <code>math/rand/v2</code> has uniform, normal and exponential draws but no Beta. A Beta sample can be built from two Gamma samples, <em>X / (X + Y)</em>, and a Gamma sample from the Marsaglia-Tsang rejection method, which needs only normal and uniform draws:</p>
-<!-- include: ch04/bandit/beta.go diff -->
-<p>How do you test a random-number routine? By its moments. A Beta(<em>a</em>, <em>b</em>) has mean <em>a / (a + b)</em> and variance <em>ab / ((a + b)²(a + b + 1))</em>; with a seeded generator and 100,000 draws the sample statistics land close to those, and the same seed means the test can never flake:</p>
-<!-- include: ch04/bandit/beta_test.go#TestSampleBetaMoments -->
-<p>The parameter sets include <code>(0.5, 0.5)</code> and <code>(1, 100)</code> on purpose: shapes below 1 exercise the boost branch, and a heavily skewed shape exercises the tail.</p>
+<h2>Your starter</h2>
+<p>Work in <code>ch04/start</code>. It is chapter 3's project plus the parts of this chapter that are not about generics: the Beta sampler, the shape of the Thompson policy, the CSV and SVG writers, and the new subcommands. Five tasks are left. Try the tests:</p>
+<!-- transcript: ch04/starter-tests -->
+<p>The first task is that error. The tests call <code>Argmax</code> with ints and strings, and the stub only takes floats.</p>
 
-<h2>Step 2: your first generic function</h2>
-<p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code>, and it worked on <code>[]float64</code> only. It is now needed for several slices of floats, and it would be equally useful on counts or names. This is a straightforward case for generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
-<!-- include: ch04/bandit/argmax.go#Argmax -->
-<p>Reading the signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <code>cmp.Ordered</code> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits, so it can call <code>cmp.Compare</code>.</p>
-<p>At the call site you rarely write the type: <code>Argmax(p.means, p.rng)</code> works because the compiler <strong>infers</strong> <code>T = float64</code> from the argument. You can write <code>Argmax[int](counts, nil)</code> to be explicit. A slice of a type that is not ordered (<code>[]struct{}</code>, say) is rejected at compile time with a clear message, not at run time.</p>
-<p>With that in place the policies simplify. Epsilon-greedy's private tie-breaking loop is gone:</p>
+<h2>Your first generic function</h2>
+<p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code> and worked on <code>[]float64</code> only. It is now needed for several slices of floats, and would be equally useful on counts or names. This is a straightforward case for generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
+<p>The starter has already switched both policies to call <code>Argmax</code>. Epsilon-greedy's private tie-breaking loop is gone:</p>
 <!-- include: ch04/bandit/epsgreedy.go#EpsilonGreedy.Select diff -->
 <p>and UCB1 computes its scores into a reusable slice and hands them to the same helper:</p>
 <!-- include: ch04/bandit/ucb1.go diff -->
 <p>Passing <code>nil</code> for the generator selects "lowest index wins" and keeps UCB1 deterministic. Using nil to mean "lowest index" is a compromise; if the two behaviours diverged further, two functions would be clearer.</p>
-<!-- include: ch04/bandit/argmax_test.go#TestArgmax -->
-<p>The test calls the same function with floats, ints and strings, which is the point of the exercise.</p>
+
+<details class="exercise" open>
+  <summary>Task 1: make <code>Argmax</code> generic</summary>
+  <div class="ex-body">
+<!-- include: ch04/start/bandit/argmax.go#Argmax -->
+    <p>Reading a generic signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <code>cmp.Ordered</code> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits.</p>
+    <p>Write it as the comment says. The tests call it with floats, ints and strings, so until this compiles no test in the <code>bandit</code> package can run. That is expected: everything else waits on this task. Run <code>go test -run Argmax ./bandit</code>.</p>
+    <details class="answer"><summary>Hint 1: the signature</summary>
+    <p><code>func Argmax[T cmp.Ordered](xs []T, rng *rand.Rand) int</code>, and add <code>"cmp"</code> to the imports.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the loop</summary>
+    <p>Panic on an empty slice. Keep <code>best</code> (an index) and <code>ties</code> (how many elements are tied with it). For each later element, <code>cmp.Compare(xs[i], xs[best])</code> returns a negative, zero or positive number. Greater: new best, <code>ties = 1</code>. Equal, and <code>rng != nil</code>: increment <code>ties</code>, and replace <code>best</code> with probability <code>1/ties</code>, which is <code>rng.IntN(ties) == 0</code>. That picks uniformly among the tied elements without remembering them.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/bandit/argmax.go#Argmax -->
+    <p>At the call site you rarely write the type: <code>Argmax(p.means, p.rng)</code> works because the compiler <strong>infers</strong> <code>T = float64</code> from the argument. You can be explicit with <code>Argmax[int](counts, nil)</code>. A slice of a type that is not ordered (<code>[]struct{}</code>, say) is rejected at compile time with a clear message, not at run time.</p>
+    </details>
+  </div>
+</details>
 
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
-  <p>A Python function taking a list already works on any element type that supports <code>&gt;</code>, checked at run time, and <code>TypeVar</code> annotations are advisory. Go generics are checked at compile time and the constraint states what the function needs. Underneath, Go does <em>not</em> box everything as an <code>object</code>; the compiler generates code that is specialised by the shape of the type arguments, so <code>Argmax</code> on <code>[]float64</code> is as fast as a hand-written loop. What Go deliberately does not have: generic <em>methods</em> (a method cannot introduce its own type parameters, only use those of its receiver type), operator overloading, or inheritance-style constraints. Constraints describe sets of types and operations, nothing more.</p>
+  <p>A Python function taking a list already works on any element type that supports <code>&gt;</code>, checked at run time, and <code>TypeVar</code> annotations are advisory. Go generics are checked at compile time and the constraint states what the function needs. Underneath, Go does <em>not</em> box everything as an <code>object</code>; the compiler generates code specialised by the shape of the type arguments, so <code>Argmax</code> on <code>[]float64</code> is as fast as a hand-written loop. What Go deliberately does not have: generic <em>methods</em> (a method cannot introduce its own type parameters, only use those of its receiver type), operator overloading, or inheritance-style constraints. Constraints describe sets of types and operations, nothing more.</p>
 </aside>
 
-<h2>Step 3: where generics do not help</h2>
-<p>Chapter 3's <code>NewPolicy</code> repeated a four-line <code>if err != nil</code> block per policy to avoid returning a typed nil. It is tempting to reach for a type parameter to remove it. The better tool is the one we already have:</p>
-<!-- include: ch04/bandit/policy.go#PolicyNames,NewPolicy,asPolicy diff -->
-<p><code>asPolicy</code> takes a <code>Policy</code> and an error. Calling <code>asPolicy(NewUCB1(nArms))</code> is legal because a call that returns two values can be passed directly as two arguments, and because the helper checks <code>err</code> itself and returns a true <code>nil</code> when there is one, the trap never escapes. No type parameter is needed: the function only asks "is there an error?", not anything about the concrete type. A rule of thumb that holds up: <strong>if a function only calls methods, take an interface; if it needs to hold, compare, or return values of the caller's own type, use a type parameter</strong>.</p>
+<h2>Thompson sampling</h2>
+<p>Epsilon-greedy explores blindly and UCB1 explores by a formula. Thompson sampling asks a more direct question: <em>given what I have seen, what could each arm's true probability be?</em></p>
+<p>For a Bernoulli arm the answer has a closed form. Start with a uniform belief, <em>Beta(1, 1)</em>. After <em>s</em> successes and <em>f</em> failures the belief becomes <em>Beta(1 + s, 1 + f)</em>: the Beta distribution is the <strong>conjugate prior</strong> for Bernoulli data, so updating means adding to two counters. To choose an arm, draw one sample from each arm's Beta and pull the arm with the largest draw. An arm with little data has a wide posterior and will sometimes draw high (exploration); an arm with a lot of data and a low mean will almost never win (exploitation). No ε and no bonus formula to tune.</p>
+<p>Those two counters per arm are worth remembering: they are plain sums, and in chapter 12 they are what lets replicas combine what they have each learned.</p>
+<p>The standard library's <code>math/rand/v2</code> has uniform, normal and exponential draws but no Beta. A Beta sample can be built from two Gamma samples, <em>X / (X + Y)</em>, and a Gamma sample from the Marsaglia-Tsang rejection method, which needs only normal and uniform draws. That is numerics rather than Go, so it is given:</p>
+<!-- include: ch04/bandit/beta.go diff -->
+<p>How do you test a random-number routine? By its moments. A Beta(<em>a</em>, <em>b</em>) has mean <em>a / (a + b)</em> and variance <em>ab / ((a + b)²(a + b + 1))</em>; with a seeded generator and 100,000 draws the sample statistics land close to those, and the same seed means the test can never flake:</p>
+<!-- include: ch04/bandit/beta_test.go#TestSampleBetaMoments -->
+<p>The parameter sets include <code>(0.5, 0.5)</code> and <code>(1, 100)</code> on purpose: shapes below 1 exercise the boost branch, and a heavily skewed shape exercises the tail.</p>
+<p>The policy's type, constructor and name are given. The state is the two counters per arm and a scratch slice for the draws:</p>
+<!-- include: ch04/bandit/thompson.go#Thompson,NewThompson,Thompson.Name -->
+
+<details class="exercise" open>
+  <summary>Task 2: <code>Thompson.Select</code> and <code>Thompson.Update</code></summary>
+  <div class="ex-body">
+<!-- include: ch04/start/bandit/thompson.go#Thompson.Select,Thompson.Update -->
+    <p>Follow the comments. <code>alpha</code> and <code>beta</code> start at 1 (the uniform prior) for every arm, so a success adds to <code>alpha</code> and a failure adds to <code>beta</code>. The reward is a <code>float64</code> that is 0 or 1, so a single expression does both: what gets added to each? The tests check behaviour, not the fields: an untrained policy tries every arm about equally, and after fifty wins on one arm and fifty losses on the others it picks the winner almost every time. Run <code>go test -run Thompson ./bandit</code>.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p><code>Select</code> is one loop that fills <code>p.samples[arm]</code> with <code>SampleBeta(p.alpha[arm], p.beta[arm], p.rng)</code>, and one line that returns <code>Argmax(p.samples, p.rng)</code>. <code>Update</code> adds <code>reward</code> to one counter and <code>1 - reward</code> to the other.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/bandit/thompson.go#Thompson.Select,Thompson.Update -->
+    <p>Both policies now share one tie-breaking helper, and <code>p.samples</code> is allocated once in the constructor so <code>Select</code> allocates nothing per call. That was the property chapter 3's benchmark measured.</p>
+    </details>
+  </div>
+</details>
+
+<h2>Where generics do not help</h2>
+<p>Chapter 3's <code>NewPolicy</code> repeated a four-line <code>if err != nil</code> block per policy to avoid returning a typed nil. It is tempting to reach for a type parameter to remove it. The better tool is the one we already have. <code>NewPolicy</code> now calls a small helper, <code>asPolicy</code>, for every policy, including the new one:</p>
+<!-- include: ch04/bandit/policy.go#PolicyNames,NewPolicy diff -->
+
+<details class="exercise" open>
+  <summary>Task 3: <code>asPolicy</code></summary>
+  <div class="ex-body">
+<!-- include: ch04/start/bandit/policy.go#asPolicy -->
+    <p>Calling <code>asPolicy(NewUCB1(nArms))</code> is legal because a call that returns two values can be passed directly as two arguments. Write the body so the trap from chapter 3 cannot escape. The test <code>TestNewPolicyFailureReturnsNilInterface</code> catches the mistake.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/bandit/policy.go#asPolicy -->
+    <p>No type parameter is needed: the function only asks "is there an error?", not anything about the concrete type. A rule of thumb that holds up: <strong>if a function only calls methods, take an interface; if it needs to hold, compare, or return values of the caller's own type, use a type parameter</strong>.</p>
+    </details>
+  </div>
+</details>
 <p>The same reasoning is why the <code>Policy</code> interface stays an interface. Turning the runner into <code>Run[P Policy](env, pol P, ...)</code> would work, but every caller would pay for a more complicated signature and gain nothing, and you could not put policies of different kinds in one slice of a type parameter (you can in a <code>[]Policy</code>, which the harness relies on).</p>
 
-<h2>Step 4: a numeric helper package</h2>
-<p>The harness needs the mean and the standard error of a set of numbers, and later chapters will want them for integers (latencies, counts) as well as floats. That is a second natural home for generics, this time with a constraint we define ourselves:</p>
-<!-- include: ch04/stat/stat.go -->
-<p>The <code>Number</code> constraint is a <strong>type set</strong>: a union of types. The <code>~</code> means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation used, and it is legal because every member of the union is numeric. The constraint guarantees at compile time that the body is valid for every type it may be called with.</p>
-<p><code>Sample[T any]</code> is the opposite extreme: no operations on the elements at all, only copying, so the constraint is <code>any</code>. Each of these has a table-driven test, including a named <code>reward</code> type to prove the tilde works:</p>
+<h2>A numeric helper package</h2>
+<p>The harness needs the mean and the standard error of a set of numbers, and later chapters will want them for integers (latencies, counts) as well as floats. That is a second natural home for generics, this time with a constraint we define ourselves.</p>
+
+<details class="exercise" open>
+  <summary>Task 4: <code>stat.Number</code> and <code>stat.Mean</code></summary>
+  <div class="ex-body">
+<!-- include: ch04/start/stat/stat.go#Number,Mean -->
+    <p>A constraint can be a <strong>type set</strong>: a union of types written with <code>|</code>. The <code>~</code> in front of a type means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Widen <code>Number</code> to <code>~int | ~int64 | ~float32 | ~float64</code>, then write <code>Mean</code>. The tests call it with ints and a named float type, so they do not compile until <code>Number</code> is widened. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation you need, and it is legal because every member of the union is numeric.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/stat/stat.go#Number,Mean -->
+    <p>The constraint guarantees at compile time that the body is valid for every type the function may be called with. <code>Sample[T any]</code>, below, is the opposite extreme: no operations on the elements at all, only copying, so its constraint is <code>any</code>.</p>
+    </details>
+  </div>
+</details>
+<p>The rest of the package is given and uses the same constraint:</p>
+<!-- include: ch04/stat/stat.go#StdErr,Sample -->
+<p>The test file includes a named <code>reward</code> type to prove the tilde works:</p>
 <!-- include: ch04/stat/stat_test.go#reward,TestMean -->
 
-<h2>Step 5: the harness</h2>
-<p>The harness answers one question: <em>how much regret does each policy accumulate, on average, in a given scenario?</em> It runs each policy against many independent environments (one per seed), collects each run's regret curve, and reduces them to the mean and standard error at every step.</p>
-<!-- include: ch04/harness/harness.go -->
-<p>Some design points:</p>
+<h2>The harness</h2>
+<p>The harness answers one question: <em>how much regret does each policy accumulate, on average, in a given scenario?</em> It runs each policy against many independent environments (one per seed), collects each run's regret curve, and reduces them to the mean and standard error at every step. The types and the reduction are given; the loop that drives the runs is your task.</p>
+<!-- include: ch04/harness/harness.go#Spec,Curve,Report,runOnce,summarise -->
+<p>Some design points before you write it:</p>
 <ul>
-  <li><strong>The policies are strings.</strong> <code>Spec.Policies</code> holds the same spec strings the CLI accepts, and <code>runOnce</code> builds a fresh environment and policy for every seed through <code>bandit.NewPolicy</code>. A policy has state, so each run needs its own.</li>
+  <li><strong>The policies are strings.</strong> <code>Spec.Policies</code> holds the same spec strings the command line accepts, and <code>runOnce</code> builds a fresh environment and policy for every seed through <code>bandit.NewPolicy</code>. A policy has state, so each run needs its own.</li>
   <li><strong>Seeds are consecutive integers</strong> from <code>BaseSeed</code>, which makes runs reproducible: <code>Compare</code> with the same <code>Spec</code> always returns the same numbers, which a test pins down.</li>
   <li><strong>Errors carry context</strong> (which policy, which seed) with <code>%w</code>, as in the previous chapter.</li>
-  <li><strong>It runs sequentially.</strong> Everything here is independent per (policy, seed), which is the ideal shape for parallel work. Chapter 5 uses this exact function as its first concurrency exercise.</li>
+  <li><strong>It runs sequentially.</strong> Everything here is independent per (policy, seed), which is the ideal shape for parallel work. Chapter 5 uses this exact function as its first concurrency task.</li>
 </ul>
+
+<details class="exercise" open>
+  <summary>Task 5: <code>harness.Compare</code></summary>
+  <div class="ex-body">
+<!-- include: ch04/start/harness/harness.go#Compare -->
+    <p>Follow the comment. The tests check the shapes (one curve per policy, <code>Steps</code> values in each mean, <code>Seeds</code> values in <code>Final</code>), that regret never decreases, that two runs with the same spec give identical numbers, and that bad input is an error. Run <code>go test ./harness</code>.</p>
+    <details class="answer"><summary>Hint 1: the shape</summary>
+    <p>An outer loop over <code>spec.Policies</code> and an inner loop over seeds, <code>for i := range spec.Seeds</code>. The inner loop builds a <code>[][]float64</code> of regret curves; after it, one call to <code>summarise</code> turns those into a <code>Curve</code>, which you append to <code>rep.Curves</code>.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the details</summary>
+    <p>The seed is <code>spec.BaseSeed + uint64(i)</code>. <code>runOnce</code> returns a <code>bandit.Result</code>, whose <code>Policy</code> field is the human-readable name to pass to <code>summarise</code> (it is the same for every seed, so keep the last one). Wrap failures with <code>fmt.Errorf("policy %q, seed %d: %w", policySpec, seed, err)</code>.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/harness/harness.go#Compare -->
+    <p>Up-front validation means <code>summarise</code> can assume at least one run and one step. Because the seeds are consecutive integers, any failure names the exact run to reproduce.</p>
+    </details>
+  </div>
+</details>
+<p>Determinism is checked like this:</p>
 <!-- include: ch04/harness/harness_test.go#TestCompareIsDeterministic -->
 
-<h2>Step 6: CSV and SVG output</h2>
-<p>Results should be usable outside Go. CSV is one <code>encoding/csv</code> writer:</p>
+<h2>CSV and SVG output</h2>
+<p>Results should be usable outside Go. CSV is one <code>encoding/csv</code> writer, and it is given:</p>
 <!-- include: ch04/harness/csv.go -->
 <p>The method takes an <code>io.Writer</code>, not a filename. A file, a <code>bytes.Buffer</code> in a test, an HTTP response body and <code>os.Stdout</code> are all writers, and <code>io.Writer</code> is one of the most widely used interfaces in the standard library. It uses the generic <code>stat.Sample</code> to thin 5,000 steps to 100 rows per policy, so the file is small enough to open anywhere:</p>
 <!-- transcript: ch04/csv-head -->
 <p>The chart is generated the same way, as a text SVG written with <code>fmt.Fprintf</code> into a <code>strings.Builder</code>. Two details make it fit a documentation site. First, colours are CSS custom properties with fallbacks (<code>var(--series-1)</code>), so the page can restyle it for dark mode while the standalone file still looks right. Second, it carries a <code>&lt;title&gt;</code> and <code>&lt;desc&gt;</code> that state the final numbers in words for screen readers, and each line is labelled directly at its right end with a marker in its colour. Lines also differ by dash pattern, so identity never rests on colour alone.</p>
 <!-- include: ch04/harness/svg.go#niceTicks,formatTick -->
-<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is straightforward coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. It is around 140 lines and teaches little Go beyond <code>fmt</code> and <code>strings.Builder</code>, so copy the whole file rather than typing it:</p>
+<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. It is around 140 lines and teaches little Go beyond <code>fmt</code> and <code>strings.Builder</code>; it is already in your starter, and reproduced here for reference:</p>
 <!-- copy: ch04/harness/svg.go why="it is coordinate arithmetic and string formatting" -->
 <p>Its output is just text:</p>
 <!-- transcript: ch04/svg-head -->
 
-<h2>Step 7: the compare subcommand</h2>
-<p>The CLI now has two subcommands. <code>main</code> only dispatches; each subcommand gets its own <code>flag.FlagSet</code>, so <code>run</code> and <code>compare</code> can have different flags:</p>
+<h2>The compare subcommand</h2>
+<p>The command line now has two subcommands, both given. <code>main</code> only dispatches; each subcommand gets its own <code>flag.FlagSet</code>, so <code>run</code> and <code>compare</code> can have different flags:</p>
 <!-- include: ch04/main.go#usage,run diff -->
-<p>Chapter 3's <code>run</code> function moves to its own file as <code>runCmd</code>. Its flag set gets a new name and <code>thompson</code> joins the default policy list; the rest is unchanged.</p>
+<p>Chapter 3's <code>run</code> function moved to its own file as <code>runCmd</code>. Its flag set has a new name and <code>thompson</code> joins the default policy list; the rest is unchanged.</p>
 <!-- include: ch04/run.go diff -->
 <p>The new subcommand wires flags to the harness and writes the optional files:</p>
 <!-- include: ch04/compare.go#compareCmd,writeFile diff -->
 <p><code>writeFile</code> uses a <em>named result</em> <code>err</code> and a <code>defer</code> so the close error is joined with the write error instead of being dropped. A failed <code>Close</code> on a file you have written to can mean the data never reached the disk. <code>defer</code> runs its function when the surrounding function returns, whichever path it takes, which is how Go does the job of Python's <code>with</code> blocks and <code>finally</code>.</p>
 
-<h2>Step 8: what the numbers say</h2>
+<h2>What the numbers say</h2>
 <p>Run the harness on three scenarios with 100 seeds of 5,000 steps each:</p>
 <!-- transcript: ch04/compare -->
 <p>The ± is the standard error of the mean regret across the 100 seeds. The mean curve is plotted at the top of this page; here are the other two scenarios:</p>
@@ -106,46 +181,52 @@
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
-<!-- transcript: ch04/verify -->
-<!-- tests -->
-<p>The same checks by hand, from your project directory. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
+<p>All five tasks done: these succeed, and the last command should match the output below. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
 <!-- transcript: ch04/checkpoint -->
-<p>The final line is the <code>run</code> subcommand (chapter 3's behaviour, now with Thompson added as a third row). The whole compare run finishes in about a second on the machine that produced this page.</p>
+<p>The final line is the <code>run</code> subcommand (chapter 3's behaviour, now with Thompson added as a third row). The whole compare run finishes in about a second on the machine that produced this page. If you get stuck, <code>ch04/solution</code> has the finished chapter to compare with.</p>
 </div>
 
-<h2>Exercises</h2>
-<p>Starters and tests are in <code>exercises/ch04</code>.</p>
+<h2>Try it</h2>
+<ul>
+  <li>Run <code>compare</code> with <code>-policy epsgreedy:0.01,epsgreedy:0.1,epsgreedy:0.3</code> on <code>close</code>. Which ε wins, and does the ranking change at <code>-steps 500</code>?</li>
+  <li>Call <code>Argmax</code> on a slice of a type that is not ordered, such as <code>[]struct{}</code>, and read the compiler's message.</li>
+</ul>
+
+<h2>Extra tasks</h2>
+<p>Three more, in the same project: <code>ch04/start/stat/extras.go</code>, with tests in <code>extras_test.go</code>. They practise generic functions with two type parameters and a generic type. Nothing else uses them.</p>
 
 <details class="exercise">
-  <summary>1. Generic SumBy and MaxBy</summary>
+  <summary>Extra 1: <code>SumBy</code> and <code>MaxBy</code></summary>
   <div class="ex-body">
-    <p>In <code>exercises/ch04/ex1</code>, implement <code>SumBy[T any, N Number](xs []T, f func(T) N) N</code> (total of a projection, e.g. total reward across a slice of result structs) and <code>MaxBy[T any, K cmp.Ordered](xs []T, key func(T) K) (T, bool)</code>. Notice that callers never write the type arguments.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch04/ex1/reference/sumby.go#SumBy,MaxBy -->
+<!-- include: ch04/start/stat/extras.go#SumBy,MaxBy -->
+    <p>Total of a projection (say, total reward across a slice of result structs) and the element with the largest key. Notice that callers never write the type arguments.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/stat/extras.go#SumBy,MaxBy -->
     <p>Two type parameters is normal when a function relates two types. <code>var sum N</code> is the generic way to say "zero of whatever this is": no literal <code>0</code> would compile for every <code>N</code>. <code>MaxBy</code> returns <code>(T, bool)</code> rather than a special value, the comma-ok idiom from chapter 1 applied to a generic type.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>2. Quantiles for a percentile band</summary>
+  <summary>Extra 2: quantiles for a percentile band</summary>
   <div class="ex-body">
-    <p>A ±1 standard-error band assumes the regret is roughly bell-shaped across seeds; the spread in the ε = 0.01 results suggests it is not. Implement <code>Quantile(xs []float64, q float64) float64</code> in <code>exercises/ch04/ex2</code> (linear interpolation, must not modify its input). As an extension with no provided test, add a <code>-band percentile</code> flag to <code>compare</code> that draws the 10th to 90th percentile instead.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch04/ex2/reference/quantile.go#Quantile -->
+<!-- include: ch04/start/stat/extras.go#Quantile -->
+    <p>A ±1 standard-error band assumes the regret is roughly bell-shaped across seeds; the spread in the ε = 0.01 results suggests it is not. Implement <code>Quantile</code> as its comment describes. As an open-ended follow-up with no test, add a <code>-band percentile</code> flag to <code>compare</code> that draws the 10th to 90th percentile instead.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/stat/extras.go#Quantile -->
     <p><code>slices.Clone</code> before <code>slices.Sort</code> protects the caller's slice, since sorting is in place. <code>!(q &gt;= 0 &amp;&amp; q &lt;= 1)</code> handles NaN for the same reason as chapter 3's probability check.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>3. A generic type with a useful zero value</summary>
+  <summary>Extra 3: a generic type with a useful zero value</summary>
   <div class="ex-body">
-    <p><code>Counter[K comparable]</code> in <code>exercises/ch04/ex3</code> counts occurrences of keys (arms, policy names, anything comparable). Implement <code>Inc</code>, <code>Get</code> and <code>MostCommon</code> so that <code>var c Counter[string]</code> is usable immediately, with no constructor.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch04/ex3/reference/counter.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
-    <p>Generic <em>types</em> take type parameters on the type and its methods repeat them in the receiver, <code>(c *Counter[K])</code>. The zero-value trick relies on two facts about maps: reading from a nil map is fine, and only writing panics, so <code>Inc</code> creates the map lazily. It is the pattern behind <code>sync.Mutex</code> and <code>bytes.Buffer</code>, both usable as declared. <code>comparable</code> is required because map keys must support <code>==</code>.</p>
+<!-- include: ch04/start/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
+    <p><code>Counter[K comparable]</code> counts occurrences of keys (arms, policy names, anything comparable). Implement the three methods so that <code>var c Counter[string]</code> is usable immediately, with no constructor.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
+    <p>Generic <em>types</em> take type parameters on the type, and its methods repeat them in the receiver, <code>(c *Counter[K])</code>. The zero-value trick relies on two facts about maps: reading from a nil map is fine, and only writing panics, so <code>Inc</code> creates the map lazily. It is the pattern behind <code>sync.Mutex</code> and <code>bytes.Buffer</code>, both usable as declared. <code>comparable</code> is required because map keys must support <code>==</code>.</p>
     </details>
   </div>
 </details>
