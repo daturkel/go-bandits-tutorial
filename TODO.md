@@ -14,6 +14,8 @@
 
 ## Not yet verified
 
+- Chapter 11: no Prometheus server or Grafana was run. The `/metrics` output on the page is real, the PromQL queries shown are not executed. `go tool pprof`'s browser UI (flame graphs, needs Graphviz for graph views) was not used; the text views were. OpenTelemetry tracing is only mentioned.
+
 - Chapter 10: the `docker run ... postgres:16` command shown as an alternative to `tools/pg.sh` was not run (no Docker daemon). The Redis design note has no code behind it.
 
 - Chapter 14: Dockerfiles, Compose files, and health checks cannot be built or run without a Docker daemon. They will be written and reviewed by hand, and the chapter and its commit message will say so.

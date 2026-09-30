@@ -1,0 +1,14 @@
+$ go test -run "^$" -bench SelectHandler -benchmem -count=3 ./internal/server 2>&1 | grep -E "^(cpu|Benchmark)"
+cpu: Intel(R) Xeon(R) Processor @ 2.80GHz
+BenchmarkSelectHandler/log=DEBUG/sink=discard-4         	   98305	     11613 ns/op	    7107 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=DEBUG/sink=discard-4         	   89262	     12477 ns/op	    7114 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=DEBUG/sink=discard-4         	   91695	     12059 ns/op	    7112 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=DEBUG/sink=file-4            	   81664	     13222 ns/op	    7122 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=DEBUG/sink=file-4            	   85801	     12630 ns/op	    7118 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=DEBUG/sink=file-4            	   84632	     13331 ns/op	    7119 B/op	      34 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=discard-4          	  112071	      9405 ns/op	    7061 B/op	      33 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=discard-4          	  115420	      9714 ns/op	    7082 B/op	      33 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=discard-4          	  107845	      9949 ns/op	    7052 B/op	      33 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=file-4             	   98222	     10413 ns/op	    7056 B/op	      33 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=file-4             	  104712	      9950 ns/op	    7052 B/op	      33 allocs/op
+BenchmarkSelectHandler/log=INFO/sink=file-4             	  105529	     10057 ns/op	    7052 B/op	      33 allocs/op

@@ -1,0 +1,22 @@
+$ BANDITD=/tmp/banditd BANDITLOAD=/tmp/banditload bash _examples/profile.sh info
+ran 8.001s, 38040 requests/s in total
+--- where the CPU time went (log level info) ---
+Duration: 6.14s, Total samples = 9550ms (155.56%)
+Showing nodes accounting for 3310ms, 34.66% of 9550ms total
+Showing top 6 nodes out of 242
+      flat  flat%   sum%        cum   cum%
+    2040ms 21.36% 21.36%     2040ms 21.36%  internal/runtime/syscall.Syscall6
+     320ms  3.35% 24.71%      320ms  3.35%  runtime.(*mspan).base (inline)
+     280ms  2.93% 27.64%      280ms  2.93%  runtime.(*gcBits).bitp (inline)
+     260ms  2.72% 30.37%      260ms  2.72%  runtime.futex
+     230ms  2.41% 32.77%     1130ms 11.83%  runtime.scanobject
+--- cumulative share of chosen functions ---
+  7.16s  74.97%  net/http.(*conn).serve
+  1.01s  10.58%  runtime.gcBgMarkWorker
+  0.27s   2.83%  banditlab/internal/bandit.(*Locked).Select
+  0.12s   1.26%  banditlab/internal/store.(*Memory).AddPending
+--- time goroutines spent waiting for locks (mutex profile, share of all lock waiting) ---
+ 2185ms  39.89%  banditlab/internal/store.(*Memory).AddPending
+700.45ms  12.79%  banditlab/internal/bandit.(*Locked).Select
+349.10ms   6.37%  banditlab/internal/store.(*Memory).Reward
+199.32ms   3.64%  banditlab/internal/bandit.(*Locked).Update

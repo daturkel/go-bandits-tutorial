@@ -1,0 +1,36 @@
+$ BIN=/tmp/banditd bash _examples/metrics.sh
+$ curl -s localhost:8082/metrics | grep ...
+banditd_arm_mean{arm="0"} 1
+banditd_arm_mean{arm="1"} 0
+banditd_arm_mean{arm="2"} 0
+banditd_arm_pulls{arm="0"} 1
+banditd_arm_pulls{arm="1"} 1
+banditd_arm_pulls{arm="2"} 0
+banditd_http_request_duration_seconds_count{route="GET /healthz"} 1
+banditd_http_request_duration_seconds_count{route="POST /reward"} 3
+banditd_http_request_duration_seconds_count{route="POST /select"} 3
+banditd_http_request_duration_seconds_count{route="unmatched"} 1
+banditd_http_requests_total{code="200",method="GET",route="GET /healthz"} 1
+banditd_http_requests_total{code="200",method="POST",route="POST /select"} 3
+banditd_http_requests_total{code="204",method="POST",route="POST /reward"} 2
+banditd_http_requests_total{code="404",method="GET",route="unmatched"} 1
+banditd_http_requests_total{code="404",method="POST",route="POST /reward"} 1
+banditd_reward_total{arm="0"} 1
+banditd_reward_total{arm="1"} 0
+banditd_selections_total{arm="0"} 1
+banditd_selections_total{arm="1"} 1
+banditd_selections_total{arm="2"} 1
+
+# a histogram is a family of cumulative counters, one per bucket:
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="5e-05"} 0
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="0.0001"} 3
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="0.0002"} 3
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="0.4096"} 3
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="0.8192"} 3
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="1.6384"} 3
+banditd_http_request_duration_seconds_bucket{route="POST /select",le="+Inf"} 3
+
+# the runtime reports itself too:
+go_goroutines 11
+go_memstats_alloc_bytes 659776
+process_open_fds 7

@@ -1,0 +1,181 @@
+<h2>What you will build</h2>
+<p>The means to answer "how is the service doing?" and "why is it slow?" with numbers. You will add a <code>/metrics</code> endpoint in Prometheus format, a separate profiling server built on <code>pprof</code>, and <code>banditload</code>, a load generator that plays simulated users against the running service and reports throughput and latency percentiles. Then you will use them the way you would on a real problem: measure, look at a profile, find where the time actually goes, change one thing, and measure again.</p>
+<p>The result is modest and honest. The code did not have a 10x problem. It had a 10% one, in a place you would not necessarily have looked, and the profile shows that the places you <em>would</em> have looked (the policy and its lock) are not the cost at all.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>Logs, metrics, and traces as three kinds of evidence; what each is for</li>
+  <li>Prometheus metric types (counter, gauge, histogram), labels, and cardinality</li>
+  <li>A custom <code>prometheus.Collector</code>, and <code>promhttp</code></li>
+  <li><code>net/http/pprof</code>; CPU, heap, mutex and goroutine profiles; reading <code>go tool pprof</code> output</li>
+  <li>Benchmarks versus load tests: what each can and cannot tell you</li>
+  <li>Closed-loop and open-loop load, percentiles, and coordinated omission</li>
+  <li>Cost-aware logging: levels by outcome, and skipping work for disabled levels</li>
+</ul>
+
+<h2>Three kinds of evidence</h2>
+<ul>
+  <li><strong>Logs</strong> record individual events. They are what you read to understand one specific thing that happened, and they get expensive when you write one per request.</li>
+  <li><strong>Metrics</strong> are numbers aggregated over time: requests per second, the 99th-percentile latency, how many selections each arm received. They are cheap to record whatever the traffic, and they are what you graph and alert on.</li>
+  <li><strong>Traces</strong> follow one request across several services. They matter once a request crosses a network hop (chapter 13); OpenTelemetry is the standard for them, and this course only mentions it.</li>
+</ul>
+<p>Chapter 9 gave the service good logs. This chapter adds metrics and profiles, and it also turns out that the logs were a cost.</p>
+
+<h2>Step 1: metrics</h2>
+<p>Prometheus <em>pulls</em>: it visits an HTTP endpoint on your service every few seconds, reads the current values, and stores each as a time series. The service's job is only to expose the current numbers in a text format. The official Go client, <code>github.com/prometheus/client_golang</code>, does the bookkeeping. It is this course's second dependency; pin it with <code>go get github.com/prometheus/client_golang@v1.22.0</code>, because newer releases raise the required Go version.</p>
+<p>Three metric types cover nearly everything:</p>
+<ul>
+  <li>A <strong>counter</strong> only goes up (requests served, errors, total reward). You never look at its value; you look at its <em>rate</em> of change, which survives restarts because a decrease is read as a reset.</li>
+  <li>A <strong>gauge</strong> goes up and down (requests in flight, the policy's current estimate for an arm).</li>
+  <li>A <strong>histogram</strong> counts observations into buckets (request durations). It is how you get percentiles: an average latency of 5 ms can hide 1% of requests taking a second.</li>
+</ul>
+<!-- include: ch11/internal/metrics/metrics.go#Metrics,New,Metrics.TrackArms,Metrics.Handler,Metrics.Selected,Metrics.Rewarded,Metrics.Expired,Metrics.StoreError -->
+<p>Some choices here matter as much as the code:</p>
+<ul>
+  <li><strong>Names and units.</strong> Counters end in <code>_total</code>, durations are in seconds and say so, and every metric starts with the service prefix. These conventions are what let generic dashboards and queries work.</li>
+  <li><strong>Buckets.</strong> The default histogram buckets start at 5 ms. This service answers in tens of microseconds to a few milliseconds, so the defaults would put every request in the first bucket and hide everything. <code>ExponentialBuckets(0.00005, 2, 16)</code> gives 16 buckets doubling from 50 µs to about 1.6 s. Choose buckets around the values you care about, such as your latency target.</li>
+  <li><strong>Its own registry.</strong> The package-level default registry is global state. A registry per <code>Metrics</code> lets tests build as many as they like.</li>
+</ul>
+
+<h3>Labels and cardinality</h3>
+<p>A label splits a metric into separate time series, one per distinct combination of label values. That is powerful and dangerous: every new value costs memory in Prometheus, forever. A label whose values come from user input (a raw URL path, a user ID, a request ID) has no upper bound, and one scanner requesting random paths can create millions of series. The request middleware therefore labels by <strong>route pattern</strong>, a small fixed set:</p>
+<!-- include: ch11/internal/metrics/metrics.go#Metrics.Middleware,statusRecorder,statusRecorder.WriteHeader,statusRecorder.Write,statusRecorder.Unwrap -->
+<p><code>r.Pattern</code> (added to <code>http.Request</code> in Go 1.23) is the <code>ServeMux</code> pattern that matched, such as <code>"POST /select"</code>. The mux fills it in while routing, so it can only be read <em>after</em> <code>next.ServeHTTP</code> returns. A request that matched nothing has an empty pattern and is counted under one label, <code>unmatched</code>. Two tests pin this down: one requests 50 different nonsense paths and checks that none appears in the output.</p>
+<!-- include: ch11/internal/server/server_test.go#TestMetricsRouteLabelsAreBounded -->
+
+<h3>Metrics that are computed when scraped</h3>
+<p>Counters are incremented as events happen. The per-arm estimates are different: they are a property of the policy right now, and updating a gauge on every <code>Update</code> would be wasted work when Prometheus only asks every few seconds. A <code>prometheus.Collector</code> computes its metrics at scrape time instead:</p>
+<!-- include: ch11/internal/metrics/metrics.go#pullsDesc,meanDesc,armCollector,armCollector.Describe,armCollector.Collect -->
+<p>Wiring it into the server takes a few lines (the option calls <code>TrackArms</code> with the policy's <code>Snapshot</code> from chapter 6), and the routes gain <code>GET /metrics</code>:</p>
+<!-- include: ch11/internal/server/server.go#Server,New,WithSlowRequestThreshold,WithMetrics,Server.Handler diff -->
+<p>The middleware order is deliberate: metrics sit between logging and recovery, so both see the 500 that <code>recoverPanic</code> writes. The handlers report business events: which arm was chosen, and how much reward each arm has earned.</p>
+<!-- include: ch11/internal/server/server.go#Server.handleSelect,Server.handleReward,Server.storeFailure,Server.ExpireLoop diff -->
+<p>Here is the real output after five requests: two rewarded selections, one unrewarded, one bad reward, one request to a path that does not exist.</p>
+<!-- include: ch11/_examples/metrics.sh title="_examples/metrics.sh" -->
+<!-- transcript: ch11/metrics -->
+<p>The 404s are split by route, so a rising rate of <code>POST /reward</code> 404s (late rewards) is distinguishable from <code>unmatched</code> 404s (a broken client). Each histogram bucket is a cumulative counter of observations at or below its upper bound (<code>le</code>), which is how Prometheus can estimate quantiles from them. Exercise 2 implements that estimate.</p>
+<p>In Prometheus you would then ask, for instance, <code>rate(banditd_http_requests_total[1m])</code> for requests per second, or <code>histogram_quantile(0.99, sum by (le) (rate(banditd_http_request_duration_seconds_bucket[5m])))</code> for the 99th-percentile latency. <em>No Prometheus server was run while writing this course</em>, so those queries are shown, not executed; the endpoint output above is real.</p>
+
+<h2>Step 2: profiling on a private port</h2>
+<p>Metrics tell you <em>that</em> something is slow. A profile tells you <em>where</em>. Go ships a sampling profiler: while it runs, it interrupts the program about a hundred times a second and records what every running goroutine is doing. Enough samples show where the time goes. The same package can report heap allocations, lock contention, and goroutine stacks.</p>
+<!-- include: ch11/internal/server/debug.go -->
+<p>Two cautions. <strong>Profile endpoints are sensitive</strong>: they reveal your code's structure and let any caller make the process do costly work, so they go on a separate listener bound to localhost or an internal network, never on the public port. And a common import trap: importing <code>net/http/pprof</code> for its side effects registers the routes on <code>http.DefaultServeMux</code>, which is easy to serve by accident. Registering them by hand on your own mux avoids that.</p>
+<p>The daemon gets a <code>BANDIT_DEBUG_ADDR</code> setting, empty (disabled) by default:</p>
+<!-- include: ch11/internal/config/config.go#Config,Load diff -->
+<!-- include: ch11/cmd/banditd/run.go diff -->
+<!-- include: ch11/internal/server/serve.go#ServeOptions,Serve diff -->
+<p>The debug server gets a two-minute <code>WriteTimeout</code>. The main server's 10 seconds would be a trap here: a CPU profile request for 30 seconds writes its response only at the end, and the standard handler refuses to start when the profile is longer than the server's write timeout. Mutex and block profiling are off by default because they cost a little on every contended lock; enabling them only when the debug server is on is a reasonable compromise. The debug server registers with the same <code>WaitGroup</code> as the expiry sweep, so <code>run</code> waits for it to stop, the goroutine lifecycle rule from chapter 7.</p>
+
+<h2>Step 3: a load generator</h2>
+<p>You cannot tune what you cannot reproduce, and typing <code>curl</code> in a loop does not scale. <code>banditload</code> plays the part of many users. Each simulated user asks for an arm, decides whether it "pays" using a real <code>bandit.Env</code> (chapter 1's Bernoulli environment, with a scenario such as <code>needle</code>), and reports the outcome back. So the generator is also an end-to-end check of learning: it reports which arms the service chose and the regret of those choices.</p>
+<!-- include: ch11/internal/load/load.go#Config,NewClient -->
+<p><code>NewClient</code> deserves a comment. The standard client keeps at most <strong>two idle connections per host</strong>. A load generator with 32 workers then closes and reopens most of its connections on every request, and ends up measuring TCP setup and running out of ports. Sizing the idle pool to the number of workers is the fix, and this is one of the most common mistakes in home-made load tests.</p>
+<!-- include: ch11/internal/load/load.go#Stats,Report,worker,Run -->
+<p>Each worker owns its own measurements (latency slices, counters, a random generator), so nothing is shared while the test runs and there is no locking on the hot path. The results are merged once at the end (the same idea as chapter 6's advice on avoiding a shared lock).</p>
+<!-- include: ch11/internal/load/load.go#worker.loop,worker.once -->
+
+<h3>Closed loop and open loop</h3>
+<p>By default each worker sends its next request as soon as the previous one finishes: a <strong>closed loop</strong>. It is simple, and it has a flaw. If the server stalls for a second, each worker simply waits, sends fewer requests during that second, and the stall appears in the results as a few slow requests among many fast ones. Real users do not slow down politely when the server does. This is called <em>coordinated omission</em>: the test's own behaviour hides the problem it is trying to measure.</p>
+<p>With <code>-rate</code> the generator runs an <strong>open loop</strong>: arrivals are scheduled at a fixed rate, and a request's latency is measured from the moment it was <em>supposed</em> to start. If the server cannot keep up, the arrivals queue, and the queueing time is counted:</p>
+<!-- include: ch11/internal/load/load.go#dispatch -->
+<p>A test proves the difference. The server is given a 50 ms service time and two workers, so its capacity is about 40 requests a second; the generator offers 200 a second. An open-loop test must show large latencies:</p>
+<!-- include: ch11/internal/load/load_test.go#TestOpenLoopExposesQueueing -->
+<p>Which mode to use depends on the question. Closed loop asks "how much can this handle?" (find the saturation point). Open loop asks "what will users experience at N requests per second?" (measure latency at a load you choose).</p>
+<p>The remaining functions turn the raw measurements into the report. Percentiles come from <code>stat.Quantile</code>, which you may recognise as chapter 4's exercise 2:</p>
+<!-- include: ch11/internal/stat/stat.go#Quantile diff -->
+<!-- include: ch11/internal/load/load.go#selectArm,sendReward,merge,Stats.fill,Report.Write,round -->
+<!-- include: ch11/cmd/banditload/main.go -->
+<p>Two details in the tests are worth reading: the generator validates that the service's arm count matches its scenario (a mismatch is reported as an error rather than crashing on an out-of-range index, a bug the tests caught), and its counts are compared with the server's own <code>/stats</code>, allowing at most one in-flight call per worker to differ at the end of a run.</p>
+<!-- transcript: ch11/build -->
+
+<h2>Step 4: benchmarks and load tests answer different questions</h2>
+<p>You already have benchmarks (chapter 3). Here is one for the whole handler chain, run without a network:</p>
+<!-- include: ch11/internal/server/server_test.go#BenchmarkSelectHandler -->
+<!-- transcript: ch11/bench -->
+<p>A select costs about 10 to 13 µs here, on one core, with no other goroutines. If that were the whole story, four cores would serve on the order of 300,000 requests a second. The load test below measures about 35,000. The gap is not an error. The benchmark isolates one code path; the load test measures the <em>system</em>: the kernel's networking, 32 connections, the load generator competing for the same four cores, the garbage collector, goroutine scheduling, and the log file. A benchmark is the right tool to compare two versions of a function, and the wrong tool to predict capacity. A load test is the reverse. Use benchmarks to protect a hot path from regressions and load tests to answer "how much traffic can this take, and how does latency behave when it gets there?"</p>
+<p>The four sub-benchmarks also show something about the fix to come. Logging every request (<code>DEBUG</code>) costs roughly 2.5 µs more per request than not logging (<code>INFO</code>) even when the output is thrown away, and about a microsecond more when it goes to a real file. A benchmark that wrote to <code>io.Discard</code> only would have understated the price by leaving out the write.</p>
+
+<h2>Step 5: find the bottleneck</h2>
+<p>The method, in order:</p>
+<ol>
+  <li><strong>Measure a baseline</strong> with something repeatable. Do not tune without a number.</li>
+  <li><strong>Profile while under load</strong>, not while idle.</li>
+  <li><strong>Read the profile before guessing.</strong> Then change one thing and measure again.</li>
+</ol>
+<p>The service so far logs one line for every request. Here is a run with that behaviour (log level <code>debug</code>), 32 simulated users on the <code>needle</code> scenario, half of the selections rewarded. The script also collects a 6-second CPU profile from the debug port while the load runs, and reads it with <code>go tool pprof</code>:</p>
+<!-- include: ch11/_examples/profile.sh title="_examples/profile.sh" -->
+<!-- transcript: ch11/profile-debug -->
+<p>How to read it. <strong>flat</strong> is time spent in the function itself; <strong>cum</strong> (cumulative) also includes everything it calls. <code>Total samples</code> above 100% just means more than one core was busy (the profile sums across cores).</p>
+<ul>
+  <li>The single biggest line is <code>syscall.Syscall6</code>, about a quarter of all CPU: reading and writing sockets, and writing the log. That is the price of doing I/O, and Go code cannot make it go away.</li>
+  <li>Garbage collection (<code>gcBgMarkWorker</code>) is about a tenth. Nearly all of the allocation behind it comes from <code>net/http</code> itself (headers, contexts), not from this project's code.</li>
+  <li>The line to notice is <code>slog.(*Logger).LogAttrs</code>: <strong>about 11% of CPU is spent formatting and writing log lines</strong>, at a volume nobody will ever read.</li>
+  <li>And the code you might have suspected: <code>Locked.Select</code>, which samples ten Beta distributions under a mutex, is about 2% and the store's <code>AddPending</code> is about 1.5%. Sharding the lock or optimising the sampler would have been effort spent on the wrong thing.</li>
+</ul>
+<p>The last block, from the mutex profile, shows where goroutines <em>wait</em> for locks rather than where they burn CPU. The store's mutex is where they queue most. That is worth knowing and, at these rates, is not what limits throughput.</p>
+
+<h2>Step 6: the fix</h2>
+<p>A production access log with one line per request is ordinary and mostly useless at volume: nobody reads 33,000 lines a second, and the metrics already count every request. What is worth a log line is the exceptional request. The fix decides the level from the outcome:</p>
+<!-- include: ch11/internal/server/middleware.go#requestLogLevel,logging diff -->
+<ul>
+  <li>Routine successes log at <code>Debug</code>: available when you turn the level down while investigating, free otherwise.</li>
+  <li>Client mistakes (4xx) log at <code>Info</code>, slow requests (over half a second by default) at <code>Warn</code>, and server failures (5xx) at <code>Error</code>. The default level shows what someone should look at.</li>
+  <li><code>log.Enabled(ctx, level)</code> is checked <em>before</em> the record is built. A disabled level then costs a comparison, not the allocation of a list of attributes. This is what <code>slog</code> is designed for; <code>log.Info(fmt.Sprintf(...))</code> would have formatted the string first and thrown it away.</li>
+</ul>
+<p>Tests for the new behaviour check that nothing is logged for routine successes at the default level, that a 404 is Info, a slow success is Warn, a panic's 500 is Error, and the boundaries of the rule:</p>
+<!-- include: ch11/internal/server/server_test.go#TestRequestLogLevels -->
+<p>Now measure again. The profile at the default level, <code>info</code>:</p>
+<!-- transcript: ch11/profile-info -->
+<p><code>LogAttrs</code> is gone from the profile, and the share of CPU spent in syscalls drops. The throughput comparison uses alternating runs of debug (the old behaviour) and info (the new default), three rounds each, so that drift in the machine affects both equally:</p>
+<!-- include: ch11/_examples/loadtest.sh title="_examples/loadtest.sh" -->
+<!-- transcript: ch11/loadtest -->
+<p>With logging fixed, the median run goes from about 33,500 to about 36,700 requests a second (roughly 10% more), and median latency drops from about 650 µs to 570 µs. The 99th percentile barely moves; it is dominated by things this change does not touch, such as garbage collection pauses and scheduling. The log written drops from over 30 MB per 6-second run to nothing. That is a real, modest, measured improvement. Read results like these with suspicion: the load generator shares four cores with the server, runs vary by several percent, and a difference under about 5% would be noise. Three alternating rounds agreeing in direction is the minimum to believe a change.</p>
+
+<h3>What comes next in the profile</h3>
+<p>You could keep going, and the profile says where. Garbage collection and the store's lock are the next items in the profile. But there is a point at which to stop: when the numbers meet your service's targets, further tuning costs clarity for no benefit. The next real limit is not in Go code at all. Each request needs several system calls, and the load generator is on the same machine. To find the server's true ceiling, run the generator on another host.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Add the new dependency to your project (see step 1), then check your project against this chapter's reference tests. The script never modifies your files:</p>
+<!-- transcript: ch11/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch11/checkpoint -->
+<p>To try it yourself: start <code>go run ./cmd/banditd -debug-addr localhost:6060</code>, run <code>go run ./cmd/banditload -c 32 -d 10s</code> in another terminal, and while it runs, fetch a profile with <code>go tool pprof -top http://localhost:6060/debug/pprof/profile?seconds=5</code>. Open <code>localhost:8080/metrics</code> in a browser.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch11</code>. The first uses the Prometheus client, so its module has that dependency already.</p>
+
+<details class="exercise">
+  <summary>1. Count responses by status class</summary>
+  <div class="ex-body">
+    <p>Implement <code>CountByClass(reg)</code> in <code>exercises/ch11/ex1</code>: middleware that counts responses in a counter <code>http_responses_total</code> with one label, <code>class</code>, whose values are <code>2xx</code>, <code>4xx</code>, and so on. A handler that writes nothing counts as 200. The counter must be created and registered once, not per request.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch11/ex1/reference/class.go#CountByClass,recorder,recorder.WriteHeader,class -->
+    <p>Registering when the middleware is built, not inside the request handler, matters: registering the same metric twice panics, and creating a metric per request would leak. The recorder starts with status 200 because Go sends 200 if the handler never calls <code>WriteHeader</code>. The label is the class, not the exact code, to keep the number of series small.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. Estimate a percentile from histogram buckets</summary>
+  <div class="ex-body">
+    <p>A histogram does not keep observations, only counts per bucket. Implement <code>EstimateQuantile(q, upper, counts)</code> in <code>exercises/ch11/ex2</code> the way <code>histogram_quantile</code> does: find the bucket holding the observation at rank <code>q * total</code>, assume the observations inside it are spread evenly, and interpolate.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch11/ex2/reference/quantile.go#EstimateQuantile -->
+    <p>The answer is only as precise as the buckets are narrow: within a bucket, the true values could be anywhere, and interpolation assumes evenly. That is why bucket boundaries should sit near the latencies you care about (your target, say), and why a p99 read from a histogram is an estimate while the load generator's, computed from every recorded latency, is exact.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Log one in n</summary>
+  <div class="ex-body">
+    <p>Implement <code>Sampler</code> in <code>exercises/ch11/ex3</code>: <code>Allow()</code> returns true for the first call and then every <code>n</code>th, and must be safe for concurrent use without a mutex. This is the other standard answer to noisy logs: keep a sample of routine events.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch11/ex3/reference/sampler.go#Sampler,NewSampler,Sampler.Allow -->
+    <p>One atomic add gives every caller a distinct sequence number, so exactly one call in n sees a multiple of n, however the goroutines interleave. A version that read the counter, compared, and wrote it back would have a race, and would let through too many or too few calls.</p>
+    </details>
+  </div>
+</details>

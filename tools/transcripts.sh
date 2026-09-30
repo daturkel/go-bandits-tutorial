@@ -197,5 +197,16 @@ ch10() {
   t ch10 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10; fi
+ch11() {
+  verify ch11
+  t ch11 build 'go build -o /tmp/banditd ./cmd/banditd' 'go build -o /tmp/banditload ./cmd/banditload' 'go run ./cmd/banditload -h 2>&1 | head -24'
+  t ch11 metrics 'BIN=/tmp/banditd bash _examples/metrics.sh'
+  t ch11 bench 'go test -run "^$" -bench SelectHandler -benchmem -count=3 ./internal/server 2>&1 | grep -E "^(cpu|Benchmark)"'
+  t ch11 profile-debug 'BANDITD=/tmp/banditd BANDITLOAD=/tmp/banditload bash _examples/profile.sh debug'
+  t ch11 profile-info 'BANDITD=/tmp/banditd BANDITLOAD=/tmp/banditload bash _examples/profile.sh info'
+  t ch11 loadtest 'BANDITD=/tmp/banditd BANDITLOAD=/tmp/banditload bash _examples/loadtest.sh'
+  t ch11 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11; fi
 for c in "$@"; do "$c"; done

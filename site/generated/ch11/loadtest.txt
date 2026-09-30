@@ -1,0 +1,7 @@
+$ BANDITD=/tmp/banditd BANDITLOAD=/tmp/banditload bash _examples/loadtest.sh
+log-level=debug   34116 requests/s   select p50 630µs  p99 5.16ms    log written: 32M
+log-level=info    38286 requests/s   select p50 557µs  p99 4.66ms    log written: 4.0K
+log-level=debug   33094 requests/s   select p50 660µs  p99 5.22ms    log written: 31M
+log-level=info    36257 requests/s   select p50 582µs  p99 4.97ms    log written: 4.0K
+log-level=debug   33469 requests/s   select p50 650µs  p99 5.15ms    log written: 32M
+log-level=info    36741 requests/s   select p50 572µs  p99 5ms       log written: 4.0K

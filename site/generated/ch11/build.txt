@@ -1,0 +1,20 @@
+$ go build -o /tmp/banditd ./cmd/banditd
+$ go build -o /tmp/banditload ./cmd/banditload
+$ go run ./cmd/banditload -h 2>&1 | head -24
+Usage of banditload:
+  -c int
+    	concurrent simulated users (default 16)
+  -d duration
+    	how long to run (default 10s)
+  -feedback-delay duration
+    	pause between a selection and its reward
+  -rate float
+    	selections per second (open loop); 0 sends as fast as the server answers (closed loop)
+  -reward-fraction float
+    	fraction of selections that get a reward call (default 1)
+  -scenario string
+    	the world the users live in: close, easy, needle, spread (default "easy")
+  -seed uint
+    	random seed (default 1)
+  -url url
+    	base url of banditd (default "http://localhost:8080")
