@@ -36,7 +36,7 @@ The builder fails if a chapter adds source lines that its page neither shows nor
 
 ## Running a reference solution directly
 
-You need **Go 1.24 or newer** (`go version`). `go.mod` pins the toolchain, so any Go 1.21+ installation downloads the right one on demand.
+You need **Go 1.27 or newer** (`go version`). `go.mod` pins the toolchain, so any Go 1.21+ installation downloads the right one on demand.
 
 `solutions/chNN` is a complete, self-contained snapshot of the project at the end of chapter NN, not a diff:
 

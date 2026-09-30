@@ -39,6 +39,12 @@ step go vet ./...
 step go build ./...
 step go test -race -count=1 ./...
 echo
-if [ $fail -eq 0 ]; then echo "PASS: your project satisfies the $ch tests"
-else echo "FAIL: see above. Compare with solutions/$ch (diff -ru $dir $ref) or restart from it with tools/start.sh"; fi
+if [ $fail -eq 0 ]; then
+  echo "PASS: your project satisfies the $ch tests"
+  if grep -rqs "BANDIT_TEST_DATABASE_URL" --include='*_test.go' --include='postgres.go' . && [ -z "${BANDIT_TEST_DATABASE_URL:-}" ]; then
+    echo "note: the PostgreSQL tests were skipped (BANDIT_TEST_DATABASE_URL is not set); tools/pg.sh start gives you a local database to run them against"
+  fi
+else
+  echo "FAIL: see above. Compare with solutions/$ch (diff -ru $dir $ref) or restart from it with tools/start.sh"
+fi
 exit $fail

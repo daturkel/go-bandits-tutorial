@@ -1,0 +1,11 @@
+$ go build -o /tmp/banditd ./cmd/banditd
+$ go build -o /tmp/banditload ./cmd/banditload
+$ DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' BIN=/tmp/banditd LOAD=/tmp/banditload bash _examples/replicas.sh off
+== sync off (each replica learns only from its own rewards) ==
+arm choices: [101 301 5314]
+expected regret of those choices: 150.9
+replica on :8091 sees pulls per arm: 38 85 1777
+replica on :8092 sees pulls per arm: 31 70 1798
+replica on :8093 sees pulls per arm: 32 146 1729
+the database holds:             101 301 5305
+

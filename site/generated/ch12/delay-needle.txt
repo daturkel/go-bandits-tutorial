@@ -1,0 +1,8 @@
+$ go run ./cmd/banditsim compare -scenario needle -policy ucb1:naive,ucb1,thompson,epsgreedy:0.1 -steps 5000 -seeds 40 -delay 1000
+scenario=needle arms=[0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.3] steps=5000 seeds=40 delay=1000
+
+policy                   final regret
+ucb1-naive               1000.0 ± 0.0
+ucb1                      414.2 ± 4.7
+thompson                  235.4 ± 4.7
+epsilon-greedy(0.10)      275.9 ± 3.9

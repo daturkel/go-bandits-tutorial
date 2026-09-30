@@ -22,7 +22,7 @@
 <p>Chapter 9 gave the service good logs. This chapter adds metrics and profiles, and it also turns out that the logs were a cost.</p>
 
 <h2>Step 1: metrics</h2>
-<p>Prometheus <em>pulls</em>: it visits an HTTP endpoint on your service every few seconds, reads the current values, and stores each as a time series. The service's job is only to expose the current numbers in a text format. The official Go client, <code>github.com/prometheus/client_golang</code>, does the bookkeeping. It is this course's second dependency; pin it with <code>go get github.com/prometheus/client_golang@v1.22.0</code>, because newer releases raise the required Go version.</p>
+<p>Prometheus <em>pulls</em>: it visits an HTTP endpoint on your service every few seconds, reads the current values, and stores each as a time series. The service's job is only to expose the current numbers in a text format. The official Go client, <code>github.com/prometheus/client_golang</code>, does the bookkeeping. It is this course's second dependency; use the version the course was tested with: <code>go get github.com/prometheus/client_golang@v1.22.0</code>.</p>
 <p>Three metric types cover nearly everything:</p>
 <ul>
   <li>A <strong>counter</strong> only goes up (requests served, errors, total reward). You never look at its value; you look at its <em>rate</em> of change, which survives restarts because a decrease is read as a reset.</li>

@@ -1,8 +1,8 @@
 module banditlab
 
-go 1.24.0
+go 1.27.0
 
-toolchain go1.24.7
+toolchain go1.27.1
 
 require github.com/jackc/pgx/v5 v5.7.6
 

@@ -127,7 +127,7 @@
 <p><code>ExpireReward</code> is a <code>*float64</code> for the same reason <code>Reward</code> was one in chapter 8: <code>nil</code> means "do not count expired selections at all", while a pointer to 0 means "count them as a reward of zero", and a plain <code>float64</code> cannot express both.</p>
 <!-- include: ch10/cmd/banditd/run.go diff -->
 <p>The sweeping goroutine follows the lifecycle rule from chapter 7: it has a context that ends it, and <code>run</code> waits for it with a <code>WaitGroup</code> before the deferred <code>st.Close()</code> runs. Closing the pool under a sweep in progress would turn a clean shutdown into an error.</p>
-<p>One version note. This chapter adds the course's first dependency, and it is pinned. Run <code>go get github.com/jackc/pgx/v5@v5.7.6</code> in your project. Later pgx releases require a newer Go than the 1.24 this course uses, and <code>go get</code> without a version would raise your <code>go.mod</code>'s Go version to match.</p>
+<p>One version note. This chapter adds the course's first dependency, and it is pinned to the version the course was tested with. Run <code>go get github.com/jackc/pgx/v5@v5.7.6</code> in your project. A newer release should work too; if it does not, this version will.</p>
 
 <h2>Step 8: late feedback, or none</h2>
 <p>A reward names a selection, and sometimes the reward comes late or never. The store forces decisions the code cannot avoid, and they are modelling decisions as much as engineering ones.</p>

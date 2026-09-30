@@ -1,0 +1,27 @@
+package ex3
+
+import "sync/atomic"
+
+// Picker hands out replica URLs in rotation, for a client that spreads its
+// requests over several instances. Next is called from many goroutines at
+// once and must be safe for that (run the tests with -race).
+type Picker struct {
+	urls []string
+	n    atomic.Uint64
+}
+
+// NewPicker returns a Picker over urls. It panics if urls is empty.
+func NewPicker(urls []string) *Picker {
+	if len(urls) == 0 {
+		panic("ex3: NewPicker needs at least one URL")
+	}
+	return &Picker{urls: append([]string(nil), urls...)}
+}
+
+// Next returns the next URL: the first call returns urls[0], the second
+// urls[1], and so on, wrapping around. Over any run of len(urls)*k calls,
+// including concurrent ones, every URL is returned exactly k times.
+func (p *Picker) Next() string {
+	i := p.n.Add(1) - 1
+	return p.urls[i%uint64(len(p.urls))]
+}

@@ -1,0 +1,6 @@
+$ go test -count=1 -v -run "SpreadsSelections|BonusShrinks|ReleasePending|ReducesRegretUnderDelay" ./internal/bandit 2>&1 | grep -E "^(--- |ok)"
+--- PASS: TestUCB1SpreadsSelectionsWhileRewardsAreOutstanding (0.00s)
+--- PASS: TestUCB1PendingBonusShrinksAsSelectionsPileUp (0.00s)
+--- PASS: TestUCB1UpdateAndAbandonReleasePending (0.00s)
+--- PASS: TestPendingAwarenessReducesRegretUnderDelay (0.01s)
+ok  	banditlab/internal/bandit	0.017s

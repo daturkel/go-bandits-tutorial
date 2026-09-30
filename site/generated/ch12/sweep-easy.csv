@@ -1,0 +1,16 @@
+policy,sync_interval,mean_regret,stderr
+epsgreedy:0.1,0,178.282,4.804
+epsgreedy:0.1,1000,177.870,4.614
+epsgreedy:0.1,100,161.902,1.740
+epsgreedy:0.1,10,155.760,2.832
+epsgreedy:0.1,1,158.730,3.427
+ucb1,0,171.008,2.330
+ucb1,1000,85.597,1.462
+ucb1,100,65.970,1.695
+ucb1,10,63.622,1.619
+ucb1,1,62.392,1.569
+thompson,0,37.388,1.555
+thompson,1000,28.493,1.518
+thompson,100,15.548,0.704
+thompson,10,12.195,0.844
+thompson,1,11.138,0.612

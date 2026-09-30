@@ -141,7 +141,7 @@
 <h3>What the three back-to-back selections show</h3>
 <p>Near the end, three selections in a row return arm 1 each time. The first selection returned arm 0 and was rewarded, so UCB1 next wants an arm it has never tried. But arm 1 has no pulls until <em>its</em> reward arrives, and no reward has. A policy only learns from rewards, not from the fact that it made a choice, so until feedback comes back, a deterministic policy repeats itself. <code>TestSelectionsWithoutFeedbackRepeat</code> pins the behaviour down:</p>
 <!-- include: ch08/server/server_test.go#TestSelectionsWithoutFeedbackRepeat -->
-<p>In the chapter 4 simulations, every choice was rewarded before the next one. A real service is different: rewards arrive late, out of order, or never. Randomised policies such as Thompson sampling spread their choices across plausible arms in the meantime, which is one reason they cope better. How much delay costs is the subject of chapters 10 and 12.</p>
+<p>In the chapter 4 simulations, every choice was rewarded before the next one. A real service is different: rewards arrive late, out of order, or never. Randomised policies such as Thompson sampling spread their choices across plausible arms in the meantime, which is one reason they cope better. How much delay costs, and how to make UCB1 cope with it, is the subject of chapters 10 and 12.</p>
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">

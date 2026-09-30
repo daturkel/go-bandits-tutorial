@@ -1,0 +1,22 @@
+$ tools/check.sh ch12 work/banditlab
+$ gofmt -l .
+$ go vet ./...
+$ go build ./...
+$ go test -race -count=1 ./...
+ok  	banditlab/cmd/banditd	1.085s
+ok  	banditlab/cmd/banditload	1.236s
+ok  	banditlab/cmd/banditsim	1.205s
+ok  	banditlab/internal/bandit	1.560s
+ok  	banditlab/internal/config	1.015s
+ok  	banditlab/internal/harness	1.570s
+ok  	banditlab/internal/load	4.205s
+ok  	banditlab/internal/logging	1.016s
+?   	banditlab/internal/metrics	[no test files]
+ok  	banditlab/internal/pool	1.118s
+ok  	banditlab/internal/server	1.854s
+ok  	banditlab/internal/stat	1.037s
+ok  	banditlab/internal/store	1.365s
+?   	banditlab/internal/store/storetest	[no test files]
+
+PASS: your project satisfies the ch12 tests
+note: the PostgreSQL tests were skipped (BANDIT_TEST_DATABASE_URL is not set); tools/pg.sh start gives you a local database to run them against

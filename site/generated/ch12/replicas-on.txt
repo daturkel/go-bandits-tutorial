@@ -1,0 +1,9 @@
+$ DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' BIN=/tmp/banditd LOAD=/tmp/banditload bash _examples/replicas.sh on
+== sync every 200ms ==
+arm choices: [36 125 4731]
+expected regret of those choices: 59.1
+replica on :8091 sees pulls per arm: 36 125 4724
+replica on :8092 sees pulls per arm: 36 125 4724
+replica on :8093 sees pulls per arm: 36 125 4724
+the database holds:             36 125 4724
+

@@ -208,5 +208,27 @@ ch11() {
   t ch11 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11; fi
+ch12() {
+  "$ROOT/tools/pg.sh" start > /dev/null
+  ( unset BANDIT_TEST_DATABASE_URL; verify ch12 )
+  local pgurl="postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable"
+  local gen="$ROOT/site/generated/ch12"
+  mkdir -p "$gen"
+
+  t ch12 herding 'go test -count=1 -v -run "SpreadsSelections|BonusShrinks|ReleasePending|ReducesRegretUnderDelay" ./internal/bandit 2>&1 | grep -E "^(--- |ok)"'
+  t ch12 delay-easy 'go run ./cmd/banditsim compare -scenario easy -policy ucb1:naive,ucb1,thompson,epsgreedy:0.1 -steps 5000 -seeds 40 -delay 200'
+  t ch12 delay-needle 'go run ./cmd/banditsim compare -scenario needle -policy ucb1:naive,ucb1,thompson,epsgreedy:0.1 -steps 5000 -seeds 40 -delay 1000'
+  (cd "$ROOT/solutions/ch12" && go run ./cmd/banditsim compare -scenario needle -policy ucb1:naive,ucb1,thompson,epsgreedy:0.1 -steps 5000 -seeds 40 -delay 1000 \
+     -csv "$gen/delay-needle.csv" -svg "$gen/delay-needle.svg" >/dev/null)
+  t ch12 sweep 'go run ./cmd/banditsim sweep -scenario easy -replicas 4 -steps 5000 -seeds 40'
+  (cd "$ROOT/solutions/ch12" && go run ./cmd/banditsim sweep -scenario easy -replicas 4 -steps 5000 -seeds 40 \
+     -csv "$gen/sweep-easy.csv" -svg "$gen/sweep-easy.svg" >/dev/null)
+  t ch12 integration "BANDIT_TEST_DATABASE_URL='$pgurl' go test -race -count=1 -v -run 'Conformance|ConcurrentFirstStart' ./internal/store 2>&1 | grep -E '^(--- |    --- |ok|FAIL)'"
+  t ch12 replicas-off 'go build -o /tmp/banditd ./cmd/banditd' 'go build -o /tmp/banditload ./cmd/banditload' \
+    "DATABASE_URL='$pgurl' BIN=/tmp/banditd LOAD=/tmp/banditload bash _examples/replicas.sh off"
+  t ch12 replicas-on "DATABASE_URL='$pgurl' BIN=/tmp/banditd LOAD=/tmp/banditload bash _examples/replicas.sh on"
+  t ch12 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12; fi
 for c in "$@"; do "$c"; done

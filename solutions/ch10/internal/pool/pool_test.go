@@ -127,7 +127,7 @@ func TestRunReturnsLowestIndexedError(t *testing.T) {
 func TestRunCallerCancellation(t *testing.T) {
 	before := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
-	release := make(chan struct{})
+	release := make(chan struct{}, 1) // buffered: the signal is not lost if the goroutine below is not waiting yet
 	go func() {
 		<-release
 		cancel()

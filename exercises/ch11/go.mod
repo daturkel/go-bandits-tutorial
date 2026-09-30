@@ -1,8 +1,8 @@
 module exercises/ch11
 
-go 1.24.0
+go 1.27.0
 
-toolchain go1.24.7
+toolchain go1.27.1
 
 require (
 	github.com/prometheus/client_golang v1.22.0

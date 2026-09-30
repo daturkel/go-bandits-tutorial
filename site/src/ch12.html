@@ -1,0 +1,174 @@
+<h2>What you will build</h2>
+<p>Everything so far ran as one process. To survive a crash or handle more traffic you run several copies (replicas) of <code>banditd</code> behind a load balancer, and that breaks something the earlier chapters took for granted: a bandit policy learns from what it has seen, and each replica sees only the requests routed to it. In this chapter you will watch three replicas drift apart, fix it by letting them share their counts through the database, measure what stale counts cost in regret with a simulation, and fix a related problem from chapter 8: UCB1 sends a burst of requests to the same arm while rewards are still in flight.</p>
+<p>The design rests on one property of the bandit state. It can be reduced to per-arm counts, and counts from different places <em>add</em>. You do not need consensus, leader election or a distributed lock to combine them.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>Why a stateful learning service cannot simply be copied behind a load balancer</li>
+  <li>Mergeable state: an operation that is commutative, associative and has an identity, and what it buys a distributed system</li>
+  <li>Periodic synchronisation, staleness, and the trade-off between freshness and load on the shared store</li>
+  <li>Advisory locks in PostgreSQL, for work that concurrent processes must not do at the same time</li>
+  <li>Pending-aware UCB1: counting selections that have no reward yet</li>
+  <li>Simulating a distributed system in a deterministic single-process model, before measuring the real one</li>
+</ul>
+
+<h2>What goes wrong</h2>
+<p>Suppose three replicas of the service from chapter 11 share one PostgreSQL database and a load balancer sends each user to one of them. The reward for a selection is written to the database, so no data is lost. But each replica's <em>policy</em> lives in memory and is updated only by the rewards that replica handled. Each one learns from a third of the evidence.</p>
+<p>This costs you in two ways. Each replica needs about three times as long to become confident about the best arm, so the system as a whole explores three times as much as it should. And the replicas disagree with each other and with the database, so what <code>/stats</code> reports depends on which replica answers. The script at the end of the chapter shows both; here is its output with syncing off:</p>
+<!-- transcript: ch12/replicas-off -->
+<p>The database holds everything (the last line), but each replica has learned from about a third of it.</p>
+
+<h2>Step 1: combining counts</h2>
+<p>Chapter 10 reduced every policy to two numbers per arm, <code>Pulls</code> and <code>RewardSum</code>, and gave each policy a <code>Restore</code> method that rebuilds it from them. Totals from different replicas describe disjoint sets of observations, so combining them is addition. <code>Merge</code> does that arm by arm:</p>
+<!-- include: ch12/internal/bandit/totals.go#Merge -->
+<p>Addition has three properties that matter here. It is <strong>commutative</strong> (<code>a+b == b+a</code>), so the order in which replicas report does not matter. It is <strong>associative</strong> (<code>(a+b)+c == a+(b+c)</code>), so it does not matter how the merging is grouped: one server can merge all three, or two can merge and hand the result on. And it has an <strong>identity</strong> (all zeros), so an empty replica changes nothing. A state with these properties is what the distributed-systems literature calls a <em>CRDT</em>-style or "mergeable" state; the practical meaning is that you can replicate it without coordination and every replica ends up with the same answer.</p>
+<p>The tests check those laws on random inputs, and check the claim that matters for learning, that merging then restoring gives the same Thompson posterior as one policy that saw all the data:</p>
+<!-- include: ch12/internal/bandit/pending_test.go#TestMergeLaws,TestMergedTotalsGiveTheSameThompsonPosterior -->
+<p>One property is deliberately missing: <code>Merge</code> is not <strong>idempotent</strong>. Merging the same replica's totals in twice counts its data twice. Systems that gossip state directly between replicas need a structure that survives duplicates (a per-replica counter, the "G-counter" of the CRDT literature). This design avoids the problem differently: replicas never merge with each other, they all write to one database, and the database's totals are the merged state. Chapter 13 gives the merging job to a dedicated service, and exercise 1 below is the building block that makes that safe.</p>
+
+<h2>Step 2: the database as the meeting point</h2>
+<p>Each replica needs two things from the database. It already has the first, <code>Totals</code>. The second is new: how many selections are still waiting for a reward across <em>all</em> replicas, which step 4 explains. The <code>Store</code> interface gains a method:</p>
+<!-- include: ch12/internal/store/store.go#Store diff -->
+<p>The in-memory store counts entries that are neither rewarded nor expired. The PostgreSQL version is a <code>LEFT JOIN</code> from the arm table, so an arm with nothing pending still gets a row containing 0:</p>
+<!-- include: ch12/internal/store/memory.go#Memory.PendingCounts -->
+<!-- include: ch12/internal/store/postgres.go#Postgres.PendingCounts -->
+<p>The conformance suite from chapter 10 checks both stores against the same expectations, including that rewarded and expired selections do not count:</p>
+<!-- include: ch12/internal/store/storetest/storetest.go#Run,testPendingCounts diff -->
+
+<h3>A bug that only appears with replicas</h3>
+<p>Starting three replicas at the same moment against an empty database failed on the first attempt of the demo at the end of this chapter, with <code>duplicate key value violates unique constraint "pg_type_typname_nsp_index"</code>. <code>CREATE TABLE IF NOT EXISTS</code> reads as safe to repeat, and it is safe to repeat <em>sequentially</em>. Two sessions running it at the same instant can both find the table missing, and one of them loses a race inside PostgreSQL's catalog. Chapter 10 never started two servers at once, so nothing exposed it.</p>
+<p>The fix is to make the replicas take turns. PostgreSQL's advisory locks are locks on an arbitrary number of your choosing, which the database enforces but attaches to no table. <code>pg_advisory_xact_lock</code> holds one until the transaction ends, so the schema setup, the arm rows and the lock's release all happen together:</p>
+<!-- include: ch12/internal/store/postgres.go#schemaLockID,Postgres.init diff -->
+<p>The test starts eight stores at once on an empty schema. Without the lock line it fails; with it, it passes (this test needs the database from chapter 10):</p>
+<!-- include: ch12/internal/store/postgres_test.go#TestPostgresConcurrentFirstStart -->
+<!-- transcript: ch12/integration -->
+
+<h2>Step 3: syncing the policy</h2>
+<p>The server replaces <code>Restore</code> with a more general <code>Sync</code>: reload the totals and the pending counts from the store and put both into the policy. It runs once at startup and then on a timer:</p>
+<!-- include: ch12/internal/server/server.go#Server.Sync,Server.SyncLoop -->
+<p>Two design points. The store is the source of truth and <code>Sync</code> <em>replaces</em> the policy's state rather than adding to it, which sidesteps the idempotence problem: syncing twice is the same as syncing once. And <code>Sync</code> does not stop the world. A reward handled between the read and the restore may be applied twice for one interval, and the next sync corrects it; the doc comment says so, because a reader debugging a count that is briefly off by one should be able to find out why.</p>
+<p>If the store is unreachable, <code>SyncLoop</code> logs a warning and the replica keeps serving from what it has. Stale answers are better than none for a bandit, where a slightly out-of-date choice costs a little regret.</p>
+<p>The rest is plumbing: a flag and environment variable for the interval (default off, with a warning at startup if a database is configured but syncing is not), a replica name in logs and <code>/stats</code> so you can tell instances apart, and the loop started next to the expiry loop:</p>
+<!-- include: ch12/internal/config/config.go#Config,Load,hostname diff -->
+<!-- include: ch12/internal/server/server.go#Server,New,WithReplicaID diff -->
+<!-- include: ch12/cmd/banditd/run.go diff -->
+<p>Sync does not need to be fast, and its cost should be weighed against the price of staleness. Every replica runs two small queries each interval; with a handful of replicas that is nothing, and with hundreds, chapter 13's aggregator (which reads once and publishes to everyone) is the better design.</p>
+
+<h2>Step 4: rewards in flight</h2>
+<p>Chapter 8 ended with a puzzle: with UCB1, several selections in a row return the same arm, because a selection changes nothing and only a reward does. With one replica and a slow reward that is a curiosity. With three replicas and thousands of users per second it becomes a stampede, because between two rewards there are hundreds of requests, and all of them get the same answer. Only the first request of a burst should do the exploring.</p>
+<p>The fix is to let a selection count as a <em>pending</em> observation. UCB1 chooses the arm with the highest <code>mean + sqrt(2 ln t / n)</code>, where <code>n</code> is how often the arm was pulled and <code>t</code> the total. Treat the outstanding selections as if they had already happened, for the exploration term only. Both <code>n</code> and <code>t</code> include pending selections, so an arm that was just chosen looks better explored, its bonus shrinks, and the next request goes elsewhere. The mean is untouched, because there is no reward to average yet. When the reward arrives (or the selection is abandoned) the pending count drops and the real observation takes its place.</p>
+<!-- include: ch12/internal/bandit/ucb1.go diff -->
+<p>Things to notice in that code:</p>
+<ul>
+  <li><code>Select</code> now changes state: it reserves a pending slot on the arm it picks. So does an unrewarded selection that the server later discards, which is why there is an <code>Abandon</code> method, called when recording the selection fails or when a selection expires without a reward being learned from.</li>
+  <li>The pending count is not part of the durable state. It is derived from the store (<code>PendingCounts</code>), and <code>SetPending</code> is how a sync installs it.</li>
+  <li><code>release</code> only decrements when the count is positive. A reward for a selection made before a restart, or on another replica, arrives without a slot to release here; going negative would corrupt the exploration term.</li>
+  <li>The old behaviour is still available as <code>ucb1:naive</code>, so the comparison below is reproducible.</li>
+</ul>
+<p>A small interface lets the server and the <code>Locked</code> wrapper use these methods on policies that have them and ignore the rest, since Thompson sampling and epsilon-greedy are randomised and do not herd:</p>
+<!-- include: ch12/internal/bandit/snapshot.go#ArmStat,PendingTracker diff -->
+<!-- include: ch12/internal/bandit/locked.go#Locked.Abandon,Locked.SetPending -->
+<!-- include: ch12/internal/bandit/policy.go#NewPolicy diff -->
+<p>The chapter 8 test that documented the herding is replaced by its opposite: three selections without feedback now go to three different arms.</p>
+<!-- include: ch12/internal/server/server_test.go#TestSelectionsWithoutFeedbackSpread -->
+<p>The bandit tests cover the mechanism directly: selections spread while rewards are outstanding (the aware policy picks arms 0, 1, 2, 3; the naive one picks arm 0 four times), the bonus shrinks as selections pile up, and updates and abandons release their slots:</p>
+<!-- include: ch12/internal/bandit/pending_test.go#TestUCB1SpreadsSelectionsWhileRewardsAreOutstanding,TestUCB1UpdateAndAbandonReleasePending -->
+<p>The server also has to release the slot when it will never see the reward. Recording a selection can fail (the database is down); the reserved slot is released, or a long outage would slowly convince UCB1 that every arm has been sampled hundreds of times. Expired selections are handled in the expiry loop the same way:</p>
+<!-- include: ch12/internal/server/server.go#Server.handleSelect,Server.ExpireLoop,statsResponse,Server.handleStats diff -->
+<!-- include: ch12/internal/server/store_test.go#TestFailedSelectionReleasesItsPendingSlot -->
+
+<h3>Measuring delay</h3>
+<p>To see the effect you need a simulator that delays rewards. <code>RunDelayed</code> keeps a queue of observations the policy has not seen yet: the reward for step <em>t</em> reaches the policy after step <em>t + delay</em> has been selected. <code>Run</code> becomes the zero-delay case, and the old behaviour is unchanged:</p>
+<!-- include: ch12/internal/bandit/sim.go#Run,RunDelayed diff -->
+<p>The comparison harness gets a <code>Delay</code> field and <code>banditsim compare</code> a <code>-delay</code> flag:</p>
+<!-- include: ch12/internal/harness/harness.go#Spec,Spec.validate,runOnce diff -->
+<!-- include: ch12/cmd/banditsim/compare.go#compareCmd diff -->
+<p>First, a delay of 200 selections on the <code>easy</code> scenario (three arms at 0.2, 0.5 and 0.8), which is about 4% of the run:</p>
+<!-- transcript: ch12/delay-easy -->
+<p>Naive UCB1 loses more than twice as much regret as the pending-aware version. It spends the first 200 or so steps on the initial tour of the arms: it pulls arm 0, has no result, so tries arm 1 as "untried", and so on; each arm gets stuck being "untried" for 200 steps. (Its standard error is 0.0 because that behaviour is identical on every seed.) Thompson sampling is still best, as it was in chapter 4. For reference, with no delay the same four policies score about 62 (UCB1), 12 (Thompson) and 158 (epsilon-greedy) on this scenario, so the delay adds roughly 18, 54 and 49 to them. Thompson sampling takes the largest hit: it has fewer observations to sharpen its beliefs with, and it does not use the pending count. Pending-aware UCB1 pays the least.</p>
+<p>The numbers get more dramatic as the delay grows relative to the run. On the <code>needle</code> scenario (nine arms at 0.1, one at 0.3), with a delay of 1,000 selections:</p>
+<!-- transcript: ch12/delay-needle -->
+<!-- svg: ch12/delay-needle.svg caption="Regret on the needle scenario with each reward arriving 1,000 selections late, mean of 40 seeds. Naive UCB1 is a straight line: it never leaves its initial tour." -->
+<p>Naive UCB1's regret is exactly 1,000.0 (and the line is straight) because the tour of ten arms costs a delay's worth of steps <em>per arm</em>, so within 5,000 steps it never finds out which arm is good and never stops paying. The pending-aware version is at 414, and the randomised policies are lower still. That last gap is real: pending-awareness rescues UCB1 from a failure mode but does not make a deterministic policy as good as a randomised one when feedback is very late.</p>
+<p>I considered a simpler fix, adding a little randomness to UCB1 ("UCB plus epsilon-greedy"). It would break the herding, but it charges every request forever for a problem that exists only while rewards are outstanding, it makes the policy nondeterministic in tests, and it hides the actual cause. The pending count deals with the cause.</p>
+
+<h2>Step 5: what staleness costs</h2>
+<p>Syncing more often costs database queries; syncing less often costs regret. How much regret? Run a simulation before building a load test, since a simulation is deterministic, fast, and lets you vary things a real deployment makes hard to vary.</p>
+<p>The model: <code>R</code> replicas share one stream of requests, sent round-robin. Every reward is added to shared totals immediately (the database), but a replica's own policy sees other replicas' rewards only every <code>interval</code> selections, when every replica is rebuilt from the shared totals. An interval of 0 means never (each replica learns from its own third or quarter of the data); an interval of 1 is the same as a single policy.</p>
+<!-- include: ch12/internal/harness/sync.go -->
+<p>The work is spread over the worker pool from chapter 7, one job per (policy, interval, seed). Because every run uses the seed it is given, the answer does not depend on how many workers there are. Tests check that syncing every step beats never syncing, that repeat runs match, and that bad input is rejected:</p>
+<!-- include: ch12/internal/harness/sync_test.go#TestSweepSyncMoreSyncingMeansLessRegret -->
+<p>Two small outputs go with it: a CSV writer and a chart in the style of chapter 4, with the sync interval as a category on the x-axis. They are plain formatting code and are printed in full in the repository:</p>
+<!-- copy: ch12/internal/harness/syncsvg.go why="it is coordinate arithmetic and string formatting, like the regret chart in chapter 4" -->
+<!-- include: ch12/internal/harness/csv.go#WriteSyncCSV -->
+<!-- include: ch12/cmd/banditsim/sweep.go -->
+<!-- include: ch12/cmd/banditsim/main.go#usage,run diff -->
+<p>Four replicas, the <code>easy</code> scenario, 5,000 selections per run, 40 seeds:</p>
+<!-- transcript: ch12/sweep -->
+<!-- svg: ch12/sweep-easy.svg caption="Final regret with four replicas, by how often they sync (selections between syncs), mean of 40 seeds." -->
+<p>Reading the table:</p>
+<ul>
+  <li><strong>Never syncing is expensive</strong> for the policies that learn quickly. Thompson sampling with four uncoordinated replicas has 37 regret against 11 for one shared brain, more than three times as much. UCB1 goes from 62 to 171.</li>
+  <li><strong>Most of the benefit comes early.</strong> Syncing every 100 selections (with 5,000 in total) gets Thompson to 15.5 and UCB1 to 66, close to the limit. Every 10 selections buys a little more; every selection buys almost nothing more. The cost of staleness is convex: a little syncing recovers most of the loss.</li>
+  <li><strong>Epsilon-greedy barely notices.</strong> Its regret is dominated by the exploration it does on purpose, which no amount of information sharing removes. Staleness costs you most when your policy is good enough to exploit what it knows.</li>
+</ul>
+<p>This is a model, not a measurement of your system. It assumes rewards are instant and requests alternate strictly between replicas. Real traffic adds reward delay (compare the numbers in step 4) and skew, and the two costs compound. The point of the simulation is to tell you which knob matters and by roughly how much before you tune it in production.</p>
+
+<h2>Step 6: the real thing</h2>
+<p>Last, run it for real. The load generator learns to talk to several replicas: <code>-url</code> takes a comma-separated list, and worker <em>i</em> talks to replica <em>i mod n</em>, like clients pinned to different instances:</p>
+<!-- include: ch12/internal/load/load.go#Config,worker,Run,worker.once diff -->
+<!-- include: ch12/cmd/banditload/main.go diff -->
+<p>The test starts three test servers and checks that each receives requests:</p>
+<!-- include: ch12/internal/load/load_test.go#TestRunSpreadsWorkersOverReplicas -->
+<p>The demo script starts three <code>banditd</code> processes on ports 8091 to 8093, all using one PostgreSQL database (start a local one with <code>tools/pg.sh start</code>; chapter 10 explains it). It runs the same 4-second load twice, with syncing off and then with a 200 ms interval, and after each run prints what every replica believes next to what the database holds:</p>
+<!-- include: ch12/_examples/replicas.sh title="_examples/replicas.sh" -->
+<!-- transcript: ch12/replicas-off -->
+<!-- transcript: ch12/replicas-on -->
+<p>With syncing off, the replicas each know about a third of the traffic and disagree with the database. The load generator's own numbers show the cost: about 151 units of expected regret over roughly 5,700 selections, or 2.6% of a unit per selection. With a 200 ms sync interval every replica reports exactly the database's counts, and the regret is about 59 over roughly 4,900 selections, 1.2% per selection. The load generator and the servers share one machine and timing varies from run to run (the number of selections in four seconds differs between the runs), so trust the pattern, not the digits. The counts add up because of the properties in step 1.</p>
+<p>Rewards spread over replicas is only half of the design. Reads still hit one replica each, and each replica's view is up to one interval old. That is the trade-off this chapter measures. Chapter 13 changes who does the merging, and chapter 14 puts a real load balancer in front.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Check your project against this chapter's reference tests. The script never modifies your files. The PostgreSQL tests are skipped unless you point <code>BANDIT_TEST_DATABASE_URL</code> at a server, and the script reminds you when they were:</p>
+<!-- transcript: ch12/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch12/checkpoint -->
+<p>To try it yourself: <code>tools/pg.sh start</code>, then run the demo script from your project (<code>DATABASE_URL=$(tools/pg.sh url) BIN=... LOAD=... bash _examples/replicas.sh</code>), and try <code>go run ./cmd/banditsim sweep -scenario needle -replicas 8</code>.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch12</code>.</p>
+
+<details class="exercise">
+  <summary>1. The difference between two readings</summary>
+  <div class="ex-body">
+    <p>Implement <code>Delta(newer, older)</code> in <code>exercises/ch12/ex1</code>: what was added to a set of per-arm totals between two readings. A replica that reports deltas rather than totals can be merged into shared state with <code>Merge</code> without ever being counted twice, which is how an aggregator can accept the same message twice. Reject readings where a count went down.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch12/ex1/reference/delta.go#Delta -->
+    <p>Subtraction is the inverse of the merge operation, which is what makes deltas useful. A count going down means the store was reset, not that data arrived, and silently returning a negative delta would corrupt the shared totals. Reporting that as <code>ok == false</code> forces the caller to decide.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. Jitter the sync interval</summary>
+  <div class="ex-body">
+    <p>Replicas started together and syncing every 10 seconds will query the database at the same instant, every time. Implement <code>Jitter(interval, frac, r)</code> in <code>exercises/ch12/ex2</code>, which returns the interval shifted randomly by up to <code>frac</code> of itself in either direction, using the random source it is given.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch12/ex2/reference/jitter.go#Jitter -->
+    <p>Taking the random source as a parameter is what makes the function testable: the tests seed it and check the range and the determinism. In <code>SyncLoop</code> you would replace the fixed ticker with a timer reset to <code>Jitter(interval, 0.2, r)</code> after each sync.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Round-robin without a lock</summary>
+  <div class="ex-body">
+    <p>Implement <code>Picker</code> in <code>exercises/ch12/ex3</code>: <code>Next()</code> returns the replica URLs in rotation and must be safe to call from many goroutines at once. The tests run 8 goroutines with <code>-race</code> and check that every URL is returned exactly the same number of times.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch12/ex3/reference/picker.go#Picker,NewPicker,Picker.Next -->
+    <p>As in chapter 11's sampler, one atomic add hands every caller its own sequence number, so the calls are spread exactly evenly however the goroutines interleave. The constructor copies the slice, so the caller changing its slice later cannot change the rotation.</p>
+    </details>
+  </div>
+</details>

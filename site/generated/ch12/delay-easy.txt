@@ -1,0 +1,8 @@
+$ go run ./cmd/banditsim compare -scenario easy -policy ucb1:naive,ucb1,thompson,epsgreedy:0.1 -steps 5000 -seeds 40 -delay 200
+scenario=easy arms=[0.2 0.5 0.8] steps=5000 seeds=40 delay=200
+
+policy                   final regret
+ucb1-naive                180.9 ± 0.0
+ucb1                       80.3 ± 1.5
+thompson                   65.3 ± 0.8
+epsilon-greedy(0.10)      206.6 ± 1.3

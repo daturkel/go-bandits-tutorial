@@ -1,0 +1,9 @@
+$ go run ./cmd/banditsim sweep -scenario easy -replicas 4 -steps 5000 -seeds 40
+scenario=easy arms=[0.2 0.5 0.8] replicas=4 steps=5000 seeds=40
+
+sync every      epsgreedy:0.1           ucb1       thompson
+never                   178.3          171.0           37.4
+1000                    177.9           85.6           28.5
+100                     161.9           66.0           15.5
+10                      155.8           63.6           12.2
+1                       158.7           62.4           11.1
