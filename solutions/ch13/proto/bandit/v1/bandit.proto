@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package bandit.v1;
+
+option go_package = "banditlab/internal/gen/bandit/v1;banditv1";
+
+// ArmTotals is one arm's summary. Totals from different sources add.
+message ArmTotals {
+  int32 arm = 1;
+  int64 pulls = 2;
+  double reward_sum = 3;
+}
+
+// PolicyService chooses arms.
+service PolicyService {
+  // Select picks an arm and remembers it under a new request id.
+  rpc Select(SelectRequest) returns (SelectResponse);
+
+  // Stats reports what this instance currently believes.
+  rpc Stats(StatsRequest) returns (StatsResponse);
+}
+
+message SelectRequest {}
+
+message SelectResponse {
+  string request_id = 1;
+  int32 arm = 2;
+}
+
+message StatsRequest {}
+
+message StatsResponse {
+  string policy = 1;
+  uint64 snapshot_version = 2; // the aggregator snapshot this instance last applied; 0 if none
+  repeated ArmStat arms = 3;
+}
+
+message ArmStat {
+  int32 arm = 1;
+  int64 pulls = 2;
+  double mean = 3;
+  int32 pending = 4;
+}
+
+// FeedbackService receives rewards.
+service FeedbackService {
+  // Reward records the outcome of one selection.
+  rpc Reward(RewardRequest) returns (RewardResponse);
+
+  // RewardBatch records many outcomes over one stream and answers once, at
+  // the end. Clients that have thousands of rewards to deliver (a nightly
+  // upload, a queue being drained) avoid a round trip per reward.
+  rpc RewardBatch(stream RewardBatchRequest) returns (RewardBatchResponse);
+}
+
+message RewardRequest {
+  string request_id = 1;
+  double reward = 2;
+}
+
+message RewardResponse {
+  int32 arm = 1;
+}
+
+message RewardBatchRequest {
+  string request_id = 1;
+  double reward = 2;
+}
+
+message RewardBatchResponse {
+  int32 accepted = 1;
+  int32 rejected = 2; // unknown, expired or already rewarded ids
+}
+
+// AggregatorService keeps the merged counts and tells everyone else.
+service AggregatorService {
+  // Report adds counts from one source. Callers send only what is new since
+  // their last report (a delta), never their running totals.
+  rpc Report(ReportRequest) returns (ReportResponse);
+
+  // Watch sends the current merged totals immediately and again whenever
+  // they change, until the client goes away.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
+
+message ReportRequest {
+  string source = 1;
+  repeated ArmTotals deltas = 2;
+}
+
+message ReportResponse {
+  uint64 version = 1;
+}
+
+message WatchRequest {}
+
+message WatchResponse {
+  uint64 version = 1; // increases with every change
+  repeated ArmTotals totals = 2;
+}
