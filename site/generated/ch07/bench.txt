@@ -1,0 +1,11 @@
+$ go test -run "^$" -bench Compare ./harness
+goos: linux
+goarch: amd64
+pkg: banditlab/harness
+cpu: Intel(R) Xeon(R) Processor @ 2.80GHz
+BenchmarkCompare/workers=1-4         	      10	 113018642 ns/op
+BenchmarkCompare/workers=2-4         	      18	  63798521 ns/op
+BenchmarkCompare/workers=4-4         	      32	  33895520 ns/op
+BenchmarkCompare/workers=16-4        	      40	  31897763 ns/op
+PASS
+ok  	banditlab/harness	4.649s

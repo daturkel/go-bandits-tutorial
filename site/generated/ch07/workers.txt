@@ -1,0 +1,7 @@
+$ go build -o /tmp/banditsim .
+$ time /tmp/banditsim compare -workers 1 > /dev/null
+real 0.65s, cpu 0.66s
+$ time /tmp/banditsim compare -workers 2 > /dev/null
+real 0.35s, cpu 0.67s
+$ time /tmp/banditsim compare > /dev/null
+real 0.17s, cpu 0.63s

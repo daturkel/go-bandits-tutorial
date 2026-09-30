@@ -47,7 +47,7 @@ go run . compare -scenario needle -svg out.svg # many seeds, with a chart
 go test -race ./...
 ```
 
-Compare two chapters with `diff -ru solutions/ch03 solutions/ch04`, or check out a tag (`git checkout ch03`) to see the repository as it stood.
+Compare two chapters with `diff -ru solutions/ch03 solutions/ch04`.
 
 ## Doing the exercises
 

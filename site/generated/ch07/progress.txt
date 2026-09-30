@@ -1,0 +1,6 @@
+$ go build -o /tmp/banditsim .
+$ /tmp/banditsim compare -seeds 300 -steps 5000 -progress 2>&1 >/dev/null | tr "\r" "\n"
+
+984/1200 runs
+1200/1200 runs
+1200/1200 runs

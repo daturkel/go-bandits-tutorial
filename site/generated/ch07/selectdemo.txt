@@ -1,0 +1,7 @@
+$ go run ./_examples/selectdemo
+1. timed out waiting for a value
+2. nothing ready, moved on
+2. now ready: 7
+3. ticked at least 4 times: true
+4. context ended: context deadline exceeded
+5. context canceled / cause: operator pressed stop

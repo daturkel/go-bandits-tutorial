@@ -113,5 +113,23 @@ ch06() {
   t ch06 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06; fi
+ch07() {
+  verify ch07
+  t ch07 selectdemo 'go run ./_examples/selectdemo'
+  t ch07 leak 'go run ./_examples/leak 2>&1 | head -9'
+  t ch07 pool-test 'go test -race -count=1 -v ./pool'
+  t ch07 cancel 'go build -o /tmp/banditsim .' \
+    '/tmp/banditsim compare -seeds 100000 -steps 5000 -timeout 200ms; echo "exit status: $?"' \
+    'timeout --preserve-status -s INT 0.5 /tmp/banditsim compare -seeds 100000 -steps 5000; echo "exit status: $?"'
+  t ch07 progress 'go build -o /tmp/banditsim .' \
+    '/tmp/banditsim compare -seeds 300 -steps 5000 -progress 2>&1 >/dev/null | tr "\r" "\n"'
+  t ch07 workers 'go build -o /tmp/banditsim .' \
+    'time /tmp/banditsim compare -workers 1 > /dev/null' \
+    'time /tmp/banditsim compare -workers 2 > /dev/null' \
+    'time /tmp/banditsim compare > /dev/null'
+  t ch07 bench 'go test -run "^$" -bench Compare ./harness'
+  t ch07 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07; fi
 for c in "$@"; do "$c"; done

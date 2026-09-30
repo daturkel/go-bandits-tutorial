@@ -1,0 +1,150 @@
+<h2>What you will build</h2>
+<p>A harness that can be stopped. Chapter 5's <code>Compare</code> started one goroutine per run and could not be interrupted. Here it runs on a fixed-size pool of workers, honours a deadline or Ctrl-C within milliseconds, cancels the remaining work when one run fails, reports progress while it runs, and leaves no goroutines behind. The pool is a small generic package you can reuse for anything that fits "many independent jobs".</p>
+<p>The same three ideas carry over to a server, which is where they matter most: a request that times out or whose client disconnects should stop consuming CPU, and a shutdown should let in-flight work finish or cancel it cleanly.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li><code>select</code>: waiting on several channel operations at once, timeouts, and <code>default</code></li>
+  <li><code>context.Context</code>: cancellation, deadlines, <code>WithCancel</code>, <code>WithTimeout</code>, <code>WithCancelCause</code></li>
+  <li>The convention that <code>ctx</code> is a function's first parameter</li>
+  <li>Bounded worker pools, and a generic <code>pool.Run</code></li>
+  <li>Goroutine lifecycle: how a goroutine leaks, and how to find one</li>
+  <li><code>signal.NotifyContext</code> for Ctrl-C</li>
+  <li><code>time.Ticker</code>, and a goroutine that reports progress</li>
+</ul>
+
+<h2>Step 1: select</h2>
+<p>A receive on a channel waits until a value arrives. <code>select</code> waits on several operations at once and runs the case of whichever becomes ready first. It looks like a <code>switch</code> whose cases are sends and receives. This program shows the four forms you will use most:</p>
+<!-- include: ch07/_examples/selectdemo/main.go title="_examples/selectdemo/main.go" -->
+<!-- transcript: ch07/selectdemo -->
+<ol>
+  <li><strong>Timeout.</strong> <code>time.After(d)</code> returns a channel that receives one value after <code>d</code>. Putting it in a <code>select</code> next to the real operation bounds the wait.</li>
+  <li><strong><code>default</code></strong> makes the <code>select</code> non-blocking: if no other case is ready right now, it runs immediately.</li>
+  <li><strong>Several sources.</strong> The loop handles ticker events until the deadline channel fires. When more than one case is ready, Go picks one at random, so never rely on case order. The label <code>loop:</code> lets <code>break loop</code> leave the loop instead of only the <code>select</code>.</li>
+  <li><strong>Contexts.</strong> A context exposes "stop now" as one channel, <code>ctx.Done()</code>, which is closed when the context ends. That is why cancellation composes with <code>select</code>.</li>
+</ol>
+<p>A nil channel is never ready, so setting a channel variable to <code>nil</code> removes its case from a <code>select</code>. That is occasionally useful for turning a case off.</p>
+
+<h2>Step 2: context</h2>
+<p>A <code>context.Context</code> carries a cancellation signal, and optionally a deadline, down a call tree. You create one from another: <code>context.WithCancel(parent)</code> returns a child and a <code>cancel</code> function; <code>context.WithTimeout(parent, d)</code> returns a child that cancels itself after <code>d</code>. Cancelling a context cancels every context derived from it, so one call at the top stops everything beneath. After cancellation, <code>ctx.Err()</code> is <code>context.Canceled</code> or <code>context.DeadlineExceeded</code>. <code>WithCancelCause</code> lets you record why, and <code>context.Cause(ctx)</code> reads it back (case 5 above).</p>
+<p>The conventions are worth following exactly, because the whole ecosystem does:</p>
+<ul>
+  <li><strong><code>ctx</code> is the first parameter</strong>, named <code>ctx</code>: <code>func Run(ctx context.Context, ...)</code>.</li>
+  <li><strong>Always call <code>cancel</code></strong>, usually with <code>defer cancel()</code> right after creating the context. Releasing it frees the timer and the link to the parent. <code>go vet</code> warns if you forget.</li>
+  <li><strong>Do not store a context in a struct</strong>; pass it along the call path. A context describes one operation, not an object.</li>
+  <li><strong>Cancellation is cooperative.</strong> Nothing is interrupted. Code that can run for a long time must look at the context, either with <code>ctx.Err()</code> or by including <code>&lt;-ctx.Done()</code> in a <code>select</code>.</li>
+  <li>Contexts can also carry request-scoped values. Use that sparingly, for things like a request ID that cross API boundaries, never for ordinary parameters.</li>
+</ul>
+
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p><code>asyncio</code> cancels a task by raising <code>CancelledError</code> at its next <code>await</code>, and a thread cannot be cancelled from outside at all. A Go context does neither: it sets a flag and closes a channel, and the code being cancelled decides where to look. That is less magical and more explicit, since every blocking point must handle it, and it is why Go APIs that block take a <code>ctx</code>. <code>asyncio.timeout()</code> is the closest equivalent of <code>WithTimeout</code>, and the idea of a deadline that propagates to everything beneath it is the same.</p>
+</aside>
+
+<h2>Step 3: make the simulation cancellable</h2>
+<p>A simulation is a tight loop, so the question is where to look at the context. Checking it on every step would cost noticeably more than the step itself (a step takes on the order of a hundred nanoseconds), so <code>Run</code> checks every 1,024 steps. That bounds the delay between cancellation and stopping to about a thousand steps, well under a millisecond.</p>
+<!-- include: ch07/bandit/sim.go#checkEvery,Run diff -->
+<p>The context becomes the first parameter, and the error wraps <code>ctx.Err()</code> so callers can test <code>errors.Is(err, context.Canceled)</code>. The partial result is returned with it, as for the out-of-range arm error in chapter 3. Two tests pin it down: a context that is already cancelled allows no pulls, and one cancelled in the middle of a run (by a stub policy that cancels after 3,000 choices) stops within one check interval:</p>
+<!-- include: ch07/bandit/sim_test.go#cancelAfter,cancelAfter.Select,TestRunNoticesCancellationMidRun -->
+<p><code>cancelAfter</code> embeds a <code>Policy</code> and overrides one method, the decorator shape from chapter 2's exercise.</p>
+
+<h2>Step 4: how goroutines leak</h2>
+<p>Chapter 5 said that a goroutine blocked forever is invisible unless every goroutine in the program is blocked. It uses memory and whatever it references for the life of the process, and a server that leaks one per request eventually runs out. The typical cause is a send with no receiver, like this one:</p>
+<!-- include: ch07/_examples/leak/main.go#fetchLeaky,fetchFixed title="_examples/leak/main.go" -->
+<p>Both functions start a worker and wait for its result, giving up after a timeout. In <code>fetchLeaky</code> the channel is unbuffered, so if the caller has already left, the worker's send has nowhere to go and blocks for good. In <code>fetchFixed</code> the channel has room for one value, so the send completes and the goroutine exits. The program calls each a thousand times with a timeout shorter than the work, and then asks the runtime what is still running:</p>
+<!-- transcript: ch07/leak -->
+<p>Two ways to find this in a real program. <code>runtime.NumGoroutine()</code> gives a count, and a count that rises with traffic and never falls back is the signature. The goroutine profile, <code>pprof.Lookup("goroutine")</code> (or <code>/debug/pprof/goroutine</code> on a server, chapter 11), groups goroutines by where they are stuck: 1,000 of them at <code>main.go:20</code>, the send. Tests can assert on the count too, which is what the <code>waitForGoroutines</code> helper in this chapter's tests does.</p>
+<p>The rule to take from this: <strong>for every goroutine you start, know how it will end</strong>. It ends when its function returns, so ask what it could be blocked on. A send needs a receiver or buffer space, a receive needs a sender or a closed channel, and any wait should also include <code>ctx.Done()</code>. Exercise 3 is this bug to fix.</p>
+
+<h2>Step 5: a bounded worker pool</h2>
+<p>Chapter 5 started one goroutine per job. That works for hundreds of jobs and does not for millions, and it ignores the fact that only as many jobs can run at once as there are cores. The standard shape is a fixed number of workers that take jobs from a channel. Now that the lifecycle rules are in hand, here it is as a reusable generic function:</p>
+<!-- include: ch07/pool/pool.go -->
+<p>Walk through it in the order things happen:</p>
+<ol>
+  <li><strong>Workers</strong> (a fixed count, never more than the number of jobs) loop over <code>work</code> until it is closed, run <code>f</code>, and send an outcome.</li>
+  <li><strong>The feeder</strong> sends job indexes into <code>work</code>. Its <code>select</code> also watches <code>ctx.Done()</code>, so after cancellation it stops handing out jobs and closes <code>work</code>, which lets the workers exit. Without that case it would block forever on a send that no worker will ever take.</li>
+  <li><strong>The closer</strong> waits for all workers and closes <code>results</code>.</li>
+  <li><strong>The collector</strong> (the calling goroutine) ranges over <code>results</code> and always drains it to the end. That guarantee is why a worker can send without a <code>select</code>: the receiver never leaves early. The first ordinary failure calls <code>cancel()</code>.</li>
+  <li><strong>Choosing the error.</strong> A job that fails because the pool cancelled it reports a context error, and that must not hide the real failure, so context errors are ranked below ordinary ones. The pool returns the lowest-index ordinary error, then the caller's own <code>ctx.Err()</code>, then any remaining context error.</li>
+</ol>
+<p>Other design choices: results are indexed by job so the output order never depends on which worker finished first (as in chapter 5); <code>OnDone</code> is called from the collecting goroutine only, so the callback needs no locking; and the function's contract says that no goroutine it started keeps running after it returns. The tests check each of these, including the bound (peak concurrency is exactly the worker count) and the absence of leaks:</p>
+<!-- include: ch07/pool/pool_test.go#TestRunBoundsConcurrency,TestRunFirstErrorCancelsTheRest -->
+<!-- transcript: ch07/pool-test -->
+<p>The standard library does not include a pool like this. The <code>golang.org/x/sync/errgroup</code> package covers the same ground (its <code>SetLimit</code> bounds concurrency); writing it out once here shows what such a package does, and this one adds ordered results and progress, which the harness wants.</p>
+
+<h2>Step 6: use it in the harness</h2>
+<p>With the pool doing the concurrency, <code>Compare</code> shrinks to describing the jobs and assembling the report:</p>
+<!-- include: ch07/harness/harness.go#Spec,Compare,runOnce diff -->
+<p>The parallel and sequential versions from chapter 5 merge: <code>Workers: 1</code> is sequential, and <code>CompareSequential</code> is gone. The tests confirm that 1, 2, or 7 workers produce identical reports, and that cancellation and timeouts return promptly with nothing left running:</p>
+<!-- include: ch07/harness/harness_test.go#TestCompareCancelled -->
+<p><code>bigSpec</code> is 2,000 seeds of 200,000 steps, minutes of work if allowed to finish, so the test passing quickly shows the cancellation reached the running simulations. It also shows in the benchmark: the number of workers is the only thing that changes.</p>
+<!-- transcript: ch07/bench -->
+<p>The machine has four cores. Going from 1 to 2 to 4 workers cuts the time roughly in half each time; 16 workers do no better than 4, because there is no more CPU to use. The right pool size for CPU-bound work is about the number of cores; for work that waits on the network it can be far higher.</p>
+
+<h2>Step 7: Ctrl-C, timeouts and progress</h2>
+<p>The last piece is at the edge of the program. <code>signal.NotifyContext</code> returns a context that is cancelled when the process receives an interrupt:</p>
+<!-- include: ch07/main.go diff -->
+<p>The small goroutine in <code>main</code> calls <code>stop()</code> once the first interrupt has arrived. That restores Go's default behaviour, so a second Ctrl-C terminates the process immediately if the graceful path is slow. <code>run</code> now takes a <code>ctx</code> and two writers: results go to <code>stdout</code>, progress to <code>stderr</code>, so redirecting one does not lose the other.</p>
+<p><code>runCmd</code> in <code>run.go</code> takes the same <code>ctx</code> and passes it to <code>bandit.Run</code>:</p>
+<!-- include: ch07/run.go#runCmd diff -->
+<p>The <code>compare</code> command gains three flags, <code>-workers</code>, <code>-timeout</code> and <code>-progress</code>:</p>
+<!-- include: ch07/compare.go#compareCmd diff -->
+<p>The progress reporter is a small goroutine with a full lifecycle, and each piece of it comes from this or the previous chapter:</p>
+<!-- include: ch07/compare.go#reportProgress -->
+<ul>
+  <li>The counters are <code>atomic.Int64</code> (chapter 6): the pool's collector writes them and the reporter reads them, with no lock.</li>
+  <li>The <code>select</code> has three cases: print on the ticker, stop when asked, stop when the context ends.</li>
+  <li><code>stop</code> closes <code>quit</code> and then <em>waits</em> on <code>finished</code>. Signalling a goroutine to stop is not the same as knowing it has stopped, and the wait is what guarantees no goroutine outlives the command and that its last write happens before <code>stop</code> returns.</li>
+</ul>
+<p>Now the behaviours, from a real binary. A timeout and an interrupt (sent by <code>timeout -s INT</code>) both stop a 100,000-seed comparison within a fraction of a second, with a clear message and a non-zero exit status:</p>
+<!-- transcript: ch07/cancel -->
+<p>Progress goes to stderr, with a carriage return so it rewrites one line (converted to newlines here so it can be shown):</p>
+<!-- transcript: ch07/progress -->
+<p>And <code>-workers</code> shows the scaling on the real command. CPU time stays flat while wall-clock time falls, meaning the same work is spread over more cores:</p>
+<!-- transcript: ch07/workers -->
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
+<!-- transcript: ch07/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch07/checkpoint -->
+<p>Some of these tests depend on timing (they cancel after tens of milliseconds and wait up to two seconds for goroutines to exit). Run them repeatedly with <code>go test -race -count=5 ./...</code> if you want more confidence than one pass gives.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch07</code>.</p>
+
+<details class="exercise">
+  <summary>1. First success wins</summary>
+  <div class="ex-body">
+    <p>Implement <code>First[T any](ctx context.Context, fns ...func(context.Context) (T, error)) (T, error)</code> in <code>exercises/ch07/ex1</code>. It runs all functions at once, returns the first successful value, cancels the rest, and does not return until every function has. This is the "hedged request" pattern: ask three replicas, use the fastest answer.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch07/ex1/reference/first.go#First -->
+    <p>The results channel has room for every result, so no goroutine can block on its send even after <code>First</code> stops caring. The loop still receives all <code>len(fns)</code> results before returning, which is how it waits for the losers: they were told to stop by <code>cancel()</code> and return promptly, provided they watch their context. A function that ignores its context would make <code>First</code> wait for it, and that is the price of the "nothing left running" guarantee.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. A semaphore from a buffered channel</summary>
+  <div class="ex-body">
+    <p>Implement <code>Limit(n int, tasks []func())</code> in <code>exercises/ch07/ex2</code>: run every task with at most <code>n</code> running at once, and return when all have finished. Do not use a fixed pool of workers; use a channel with capacity <code>n</code> as a counting semaphore.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch07/ex2/reference/limit.go#Limit -->
+    <p>Sending on a full buffered channel blocks, so <code>sem &lt;- struct{}{}</code> waits when <code>n</code> tasks hold slots, and the receive in the deferred function frees one. <code>struct{}</code> is the zero-size type, the idiomatic payload for a channel that only signals. This shape starts one goroutine per task but runs only <code>n</code> at a time, which suits few, heavy tasks; for millions of small ones, the fixed pool of step 5 is cheaper.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Fix the leak</summary>
+  <div class="ex-body">
+    <p><code>Fetch</code> in <code>exercises/ch07/ex3</code> returns early when its context ends, but the goroutine it started blocks forever on the send. The test calls it a hundred times with a short timeout and checks the goroutine count afterwards. Fix it without making <code>Fetch</code> wait for the work.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch07/ex3/reference/fetch.go#Fetch -->
+    <p>One character of difference: <code>make(chan string, 1)</code>. With room for the single result, the worker's send never blocks, so the goroutine finishes its work, sends into the buffer, and exits even if nobody ever reads it. The buffered value is then garbage collected with the channel. This does not stop the work itself; if <code>work</code> accepted a context it could be cancelled too, which is the better design when you control it.</p>
+    </details>
+  </div>
+</details>
