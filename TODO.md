@@ -28,4 +28,13 @@
 
 ## Deferred
 
+- **GitHub Actions CI** (not started). The Pages workflow only rebuilds the site and deploys it. A CI workflow should run on every push and pull request:
+  - per chapter in `solutions/`: `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./...`, `go test -race ./...`, with a PostgreSQL service container and `BANDIT_TEST_DATABASE_URL` set so the database tests run instead of skipping;
+  - `tools/check_exercises.sh` (starters must fail, references must pass);
+  - the Python client tests in `solutions/ch14/clients/python` and `solutions/capstone/clients/python` (needs `pip install -r requirements.txt` and `sh generate.sh` first);
+  - `buf lint` and a check that `buf generate` leaves the committed generated code unchanged (pin the plugin versions, see the chapter 13 note above);
+  - the site staleness and link check, which the Pages workflow already does;
+  - `docker compose config` and, since GitHub runners have Docker, an actual `docker compose build` and `up` with a health-check wait, which would finally verify chapter 14's images.
+  Decide whether to run chapters in a matrix (fifteen jobs, parallel) or in one job; the matrix is slower to read but shows which chapter broke.
+
 - Timing figures in transcripts (`go test`, benchmarks) come from the machine that ran `tools/transcripts.sh` and will differ on yours. Seeded simulation output is exact.
