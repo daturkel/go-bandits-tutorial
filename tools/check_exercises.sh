@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 status=0
 chapters=("$@")
 if [ ${#chapters[@]} -eq 0 ]; then
-  for d in "$ROOT"/exercises/ch* "$ROOT"/exercises/capstone; do chapters+=("$(basename "$d")"); done
+  for d in "$ROOT"/exercises/ch* "$ROOT"/exercises/capstone "$ROOT"/exercises/primer; do chapters+=("$(basename "$d")"); done
 fi
 for ch in "${chapters[@]}"; do
   for ex in "$ROOT/exercises/$ch"/ex*/; do

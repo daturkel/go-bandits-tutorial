@@ -1,0 +1,11 @@
+$ go run ./control
+win at pull 0
+win at pull 3
+win at pull 4
+total: 3
+0 1 2 
+0 1 2 
+first power of 3 over 100: 243
+average 0.6: mostly wins
+many wins
+good

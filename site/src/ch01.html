@@ -1,79 +1,103 @@
 <h2>What you will build</h2>
-<p>A command-line program that simulates a multi-armed bandit and reports how much reward it left on the table. You will create a Go module, define an environment whose arms pay out with fixed probabilities, write an epsilon-greedy policy that learns which arm is best, and run it for thousands of pulls with a seeded random number generator so every run is reproducible.</p>
-<p>Everything later in the course is built on these types, so it is worth being precise about the problem before writing any code.</p>
+<p>A command-line program that simulates a multi-armed bandit and reports how much reward it left on the table. You start from a project that is partly written. Most of it works; six small pieces are missing, each with tests that fail until you write it. By the end you have a Go module, an environment whose arms pay out with fixed probabilities, an epsilon-greedy policy that learns which arm is best, a simulation loop, and a program you can run with different settings.</p>
+<p>Everything later in the course builds on these types, so it is worth being precise about the problem first.</p>
 
 <h3>The bandit problem in one paragraph</h3>
-<p>There are <em>k</em> arms. Pulling an arm pays 1 with some hidden probability and 0 otherwise. You want the most total reward over a fixed number of pulls, but you do not know the probabilities. Pulling the arm that looks best <em>exploits</em> what you know; pulling another arm <em>explores</em> in case your estimate is wrong. The cost of not always pulling the best arm is <strong>regret</strong>: the sum, over every pull, of the gap between the best arm's probability and the probability of the arm you actually pulled. Lower is better, and a good policy's regret grows slowly as pulls accumulate.</p>
+<p>There are <em>k</em> arms. Pulling an arm pays 1 with some hidden probability and 0 otherwise. You want the most total reward over a fixed number of pulls, but you do not know the probabilities. Pulling the arm that looks best <em>exploits</em> what you know; pulling another arm <em>explores</em>, which costs reward now and might reveal something better. <strong>Regret</strong> measures the cost: the reward you would have collected by always pulling the best arm, minus what you collected.</p>
 <p>Epsilon-greedy is the simplest policy: with probability ε pull a random arm, otherwise pull the arm with the best average reward so far.</p>
 
-<h2>Concepts introduced</h2>
+<h2>The Go in this chapter</h2>
+<p>If you skipped the <a href="primer.html">primer</a>, this is a good moment to skim it. Here is where each idea from it shows up, and what is new:</p>
 <ul>
-  <li>Modules and <code>go.mod</code>, packages, exported vs. unexported names</li>
-  <li>Structs, methods, and constructor functions</li>
-  <li>Slices, maps, and <code>make</code></li>
-  <li>Multiple return values, named results, and the comma-ok idiom</li>
-  <li>Zero values</li>
-  <li><code>math/rand/v2</code> with seeded generators</li>
-  <li>The <code>flag</code> package, <code>for</code>/<code>range</code> (including ranging over an integer), <code>switch</code></li>
+  <li><strong>From the primer:</strong> functions and multiple return values (<code>Best</code>), slices and <code>make</code> (the policy's state), maps and comma-ok (scenarios), structs, methods and pointer receivers (<code>Env</code>, <code>EpsilonGreedy</code>), <code>for</code> and <code>range</code> (the simulation), running tests.</li>
+  <li><strong>New here:</strong> a project made of a <em>module</em> with two <em>packages</em>, exported and unexported names, and a first look at the standard library's random numbers and command-line flags.</li>
+  <li><strong>Seen but not explained yet:</strong> <code>iota</code> in <code>rng.go</code>, and how <code>flag</code> and <code>os.Exit</code> work in <code>main.go</code>. Read them, run the program, and move on; the notes on each say where it comes back.</li>
 </ul>
 
-<h2>How to work through the course</h2>
-<p>You build one project, chapter by chapter, in a directory of your own. Nothing is hidden: every line a chapter adds appears on its page.</p>
+<h2>How the chapters work</h2>
+<p>You do not type a whole project. Each chapter gives you a <strong>starter</strong>: the previous chapter's finished project (or, for chapter 1, a small one) with the interesting parts removed. Those parts are <strong>tasks</strong>, marked <code>TASK n</code> in the code. The page explains each one, you write it, and the tests tell you when it is right. Each task has a hint and an answer behind a click; try first. You never build on your own code from an earlier chapter, so a mistake in chapter 2 cannot make chapter 3 unworkable.</p>
 <ul>
-  <li><strong>Type the code or copy it from the listing.</strong> A listing shows a file or part of one. Highlighted lines in the margin are new since the previous chapter, and "full file" links to the reference copy. Excerpts leave out the <code>package</code> clause and imports; gopls adds imports when you save, or run <code>goimports -w .</code>.</li>
-  <li><strong>Use the names exactly as listed.</strong> That covers types, functions, methods, fields and constants, and the directories <code>bandit/</code>, <code>harness/</code> and <code>stat/</code> (file names inside a package do not matter). The reference tests compile against your code, so a misspelled name shows up as an <code>undefined</code> error. Every name the tests use appears in a listing on that chapter's page or an earlier one. Any module path works, but your imports must match it.</li>
-  <li><strong>Long files that teach little Go</strong> are marked "Copy this file" instead of being listed.</li>
-  <li><strong>Each checkpoint starts with <code>tools/check.sh</code>.</strong> It copies your project aside, swaps in the reference tests for that chapter, and runs <code>gofmt</code>, <code>go vet</code>, <code>go build</code> and <code>go test -race</code>. It never changes your files. The reference tests are linked from each checkpoint if you want to read them.</li>
-  <li><strong>Stuck, or skipping ahead?</strong> <code>tools/start.sh chNN work/banditlab</code> copies the reference project as it stands at the end of chapter NN into a new directory. Every chapter's page begins by naming the state it expects.</li>
-  <li><strong>Exercises</strong> live separately in <code>exercises/chNN</code> and do not depend on your project, so they work either way.</li>
+  <li>Get the starter with <code>tools/starter.sh ch01 work/banditlab</code>, then <code>cd work/banditlab</code>. You can also work in a copy anywhere.</li>
+  <li>Run <code>go test ./...</code> whenever you like. At first the tests for the missing pieces fail; your job is to make them pass.</li>
+  <li>The code that is <em>not</em> a task is shown on the page and explained, but you do not need to type it.</li>
+  <li>At the end of the chapter there is more practice, in separate small files that do not touch the project.</li>
 </ul>
 
-<h2>Step 1: create the module</h2>
-<p>A Go <strong>module</strong> is a tree of packages versioned together, described by a <code>go.mod</code> file at its root. A <strong>package</strong> is a directory of <code>.go</code> files that share a <code>package</code> clause; it is the unit of compilation and of import. There is no separate build file, no virtual environment, and no install step: the toolchain reads <code>go.mod</code> and builds.</p>
+<h2>Step 1: the module</h2>
+<p>A Go <strong>module</strong> is a tree of packages versioned together, described by a <code>go.mod</code> file at its root. A <strong>package</strong> is a directory of <code>.go</code> files that share a <code>package</code> clause; it is the unit of compilation and of import. The starter is already a module. Had you started from an empty directory you would have created it like this:</p>
 <!-- transcript: ch01/mod-init -->
-<p><code>go mod init</code> records the Go version you happen to have installed. This project pins both a language version and an exact toolchain so every reader builds with the same compiler:</p>
+<p><code>go mod init</code> records the Go version you happen to have installed. This project pins both a language version and an exact toolchain, so every reader builds with the same compiler:</p>
 <!-- include: ch01/go.mod -->
-<p>The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the exact release the <code>go</code> command will use, downloading it if your local one is older. Nothing else is needed: this module has no dependencies, so there is no lock file yet. Create the file in your project directory with that content.</p>
-
-<p>The layout for this chapter is deliberately small:</p>
+<p>The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the exact release the <code>go</code> command uses, downloading it if yours is older. This module has no dependencies, so there is no <code>go.sum</code> and nothing else to manage.</p>
+<p>The layout is small on purpose:</p>
 <figure class="term"><figcaption><span class="fname">layout</span></figcaption>
-<pre tabindex="0"><code><span class="ln out">solutions/ch01/</span><span class="ln out">├── go.mod</span><span class="ln out">├── main.go              package main: flags, printing</span><span class="ln out">└── bandit/              package bandit: the actual logic</span><span class="ln out">    ├── rng.go           seeded random number generators</span><span class="ln out">    ├── env.go           the Bernoulli environment</span><span class="ln out">    ├── scenarios.go     named test beds</span><span class="ln out">    ├── epsgreedy.go     the policy</span><span class="ln out">    ├── sim.go           the simulation loop and its Result</span><span class="ln out">    └── sim_test.go</span></code></pre></figure>
-<p>The import path of the library package is the module path plus the directory: <code>banditlab/bandit</code>. Every file in <code>bandit/</code> starts with <code>package bandit</code>, and anything defined in one file is visible to the others without importing. <code>package main</code> is special: it is the one whose <code>main</code> function becomes the program.</p>
-
+<pre tabindex="0"><code><span class="ln out">banditlab/</span><span class="ln out">├── go.mod</span><span class="ln out">├── main.go              package main: flags, printing</span><span class="ln out">└── bandit/              package bandit: the library</span><span class="ln out">    ├── rng.go           seeded random numbers</span><span class="ln out">    ├── env.go           the environment (the world)</span><span class="ln out">    ├── scenarios.go     named test beds</span><span class="ln out">    ├── epsgreedy.go     the policy</span><span class="ln out">    └── sim.go           the simulation loop</span></code></pre></figure>
+<p>The import path of the library package is the module path plus the directory: <code>banditlab/bandit</code>. Every file in <code>bandit/</code> starts with <code>package bandit</code>, and anything defined in one file is visible to the others without importing. Code outside the package can use only the names that start with a capital letter.</p>
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
-  <p>Python packages are found by searching <code>sys.path</code>, and a directory becomes a package by convention or an <code>__init__.py</code>. In Go the module path in <code>go.mod</code> is the root of every import, a package is exactly one directory, and the compiler rejects an unused import or an unused local variable. Whether a name is public is decided by its first letter: <code>Env</code> is exported, <code>env</code> is not. There are no <code>_private</code> conventions and no <code>__all__</code>.</p>
+  <p>Python packages are found by searching <code>sys.path</code>, and a directory becomes a package by convention or an <code>__init__.py</code>. In Go the module path in <code>go.mod</code> is the root of every import, and a package is exactly one directory. There is no search path to get wrong.</p>
 </aside>
+<p>Now see where you are. Get the starter and run its tests:</p>
+<!-- transcript: ch01/starter-tests -->
+<p>Everything compiles, and everything you have to write fails. The tests are the specification; read a failing one when a task is unclear.</p>
 
 <h2>Step 2: seeded randomness</h2>
-<p>A simulation you cannot reproduce is a simulation you cannot debug, so randomness comes from generators we create and seed ourselves, never from the global one. <code>math/rand/v2</code> provides <code>rand.New(rand.NewPCG(seed1, seed2))</code>: a PCG generator whose entire state is the two numbers you give it.</p>
+<p>A simulation you cannot reproduce is a simulation you cannot debug, so randomness comes from generators we create and seed ourselves, never from the global one. <code>math/rand/v2</code> provides <code>rand.New(rand.NewPCG(seed1, seed2))</code>: a PCG generator, fast and statistically sound, that produces the same numbers for the same two seeds on every machine. <code>NewRNG</code> wraps this with a seed and a <em>stream</em> number:</p>
 <!-- include: ch01/bandit/rng.go -->
-<p>The environment and the policy each get their <em>own</em> generator, created from the same seed but a different stream number. If they shared one, adding a single extra random draw to the policy would silently change every reward the environment produces, and results would stop being comparable between policies.</p>
-<p>The <code>const</code> block uses <code>iota</code>, which counts up from zero within a constant group: <code>StreamEnv</code> is 1 and <code>StreamPolicy</code> is 2. Go has no enum type; a typed group of constants is the idiom.</p>
+<p>The environment and the policy each get their <em>own</em> generator, made from the same seed but different stream numbers. If they shared one, adding a single extra random draw to the policy would silently change every reward the environment produces, and comparing two policies on "the same" world would not be fair.</p>
+<p>The <code>const</code> block uses <code>iota</code>, a counter that starts at zero in each constant group, so <code>StreamEnv</code> is 1 and <code>StreamPolicy</code> is 2. Read it as "two named numbers"; chapter 3 shows what the idiom is for.</p>
 
 <h2>Step 3: the environment</h2>
-<p>An environment is a set of arms with hidden success probabilities. A <strong>struct</strong> groups the data, and <strong>methods</strong> are functions declared with a receiver:</p>
-<!-- include: ch01/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob,Env.Pull -->
-<p>Three things to notice:</p>
+<p>An environment is a set of arms with hidden success probabilities. The struct and its constructor are given:</p>
+<!-- include: ch01/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
 <ul>
-  <li><strong>There are no constructors.</strong> <code>NewEnv</code> is an ordinary function that, by convention, returns a pointer to a ready-to-use value. The fields are lowercase, so code outside the package can only get an <code>Env</code> through it.</li>
-  <li><strong><code>slices.Clone</code></strong> copies the caller's slice. A slice is a small header (pointer, length, capacity) onto an array, so assigning one shares the elements. Without the clone, the caller could change the probabilities under our feet.</li>
-  <li><strong>Receivers are pointers</strong> (<code>*Env</code>). A method with a pointer receiver can modify the value it is called on and avoids copying the struct on every call. The next chapter is about when to choose a value receiver instead; for now, use pointers for anything with state.</li>
+  <li><strong>There are no constructors in Go.</strong> <code>NewEnv</code> is an ordinary function that, by convention, returns a pointer to a ready-to-use value. The fields are lowercase, so code outside the package can only get a working <code>Env</code> through it.</li>
+  <li><strong><code>slices.Clone</code> copies the caller's slice.</strong> A slice is a small header onto an array, so assigning one shares the elements. Without the clone, the caller could change the probabilities under our feet. There is a test for exactly that.</li>
+  <li><strong>The receivers are pointers</strong> (<code>*Env</code>), the rule of thumb from the primer: methods that change the struct, or that belong to a type with state, use one. Chapter 2 is about the choice.</li>
 </ul>
-<p>The rest of the environment answers "which arm is actually best?", which the simulation needs in order to measure regret:</p>
+
+<details class="exercise" open>
+  <summary>Task 1: <code>Env.Pull</code></summary>
+  <div class="ex-body">
+    <p>Pulling an arm returns 1 with the arm's probability and 0 otherwise. <code>e.rng.Float64()</code> returns a random number in [0, 1).</p>
+<!-- include: starters/ch01/bandit/env.go#Env.Pull -->
+    <p>Run <code>go test -run Pull ./bandit</code>. The tests check that rewards are only 0 or 1, that the long-run rate matches the probability, and that a seed gives the same sequence twice.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p>Compare the random number with the probability. A draw that falls below <code>probs[arm]</code> happens with exactly that probability.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/env.go#Env.Pull -->
+    <p>A number drawn uniformly from [0, 1) is below <em>p</em> with probability exactly <em>p</em>. The function returns a <code>float64</code> (0 or 1, not a bool) so rewards can later be fractions, and so the policy code can add them up without conversions.</p>
+    </details>
+  </div>
+</details>
+
+<p>The simulation needs to know which arm is really best, to measure regret. That is the second task:</p>
+
+<details class="exercise" open>
+  <summary>Task 2: <code>Env.Best</code></summary>
+  <div class="ex-body">
+<!-- include: starters/ch01/bandit/env.go#Env.Best -->
+    <p><code>Best</code> returns two values. Its results are <em>named</em> (<code>arm</code> and <code>p</code>), which declares them as variables at the top of the function, set to zero. Loop over the probabilities and keep the largest. If two arms tie, the first wins. Run <code>go test -run Best ./bandit</code>.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p>The first arm is the best so far by default. After that, an arm replaces it only if its probability is strictly larger. A <code>for i, q := range e.probs</code> loop gives you both the index and the value, and <code>i == 0</code> is a convenient way to say "first".</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/env.go#Env.Best -->
-<p><code>Best</code> returns two values. The <em>named results</em> <code>arm</code> and <code>p</code> are declared as variables at the top of the function and start at their <strong>zero values</strong>, <code>0</code> and <code>0.0</code>. The loop relies on this: the <code>i == 0</code> check seeds them with the first arm, and an environment with no arms returns <code>(0, 0)</code> without any special case. (Chapter 3 makes that impossible by rejecting empty environments.)</p>
+    <p>The named results start at zero, so the <code>i == 0</code> test is what makes the first arm the starting champion whatever its probability. The comparison is strict (<code>&gt;</code>), so on a tie the earlier arm keeps its place, which is what the test for ties expects.</p>
+    </details>
+  </div>
+</details>
 
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
-  <p>Every type has a usable zero value: <code>0</code>, <code>""</code>, <code>false</code>, <code>nil</code> for pointers, slices and maps. Variables are never "undefined", and there is no <code>None</code> to forget to check for a number or a string. Well-designed Go types try to make their zero value useful, and you will see that used deliberately when we count pulls per arm: <code>make([]int, n)</code> is already a correct set of zeroed counters.</p>
+  <p>Every type has a usable zero value (<code>0</code>, <code>""</code>, <code>false</code>, <code>nil</code> for pointers, slices and maps), and variables are never "undefined". There is no <code>None</code> to forget to check for a number or a string. Well-designed Go types work in their zero state, which is why <code>make([]int, n)</code> below needs no initialisation loop.</p>
 </aside>
 
-<h2>Step 4: named scenarios with a map</h2>
-<p>To compare behaviours we want a few standard test beds we can select by name. A <strong>map</strong> is Go's dictionary:</p>
+<h2>Step 4: named scenarios</h2>
+<p>To compare behaviours we want a few standard test beds we can select by name. This file is given; it is a map from name to probabilities:</p>
 <!-- include: ch01/bandit/scenarios.go -->
-<p><code>Scenario</code> returns <code>([]float64, bool)</code>. Reading a map with two variables, <code>probs, ok := scenarios[name]</code>, is the <strong>comma-ok</strong> idiom: a missing key does not raise, it yields the zero value and <code>ok == false</code>. This is how Go says "may be absent" without exceptions or a sentinel, and returning a <code>(value, ok)</code> pair from your own functions is the same idea. Chapter 3 upgrades this to an <code>error</code>.</p>
-<p>Map iteration order is deliberately randomised, so <code>ScenarioNames</code> collects the keys with <code>maps.Keys</code> and sorts them with <code>slices.Sorted</code>. The four scenarios are worth knowing, because later chapters compare policies on them:</p>
+<p><code>Scenario</code> returns <code>([]float64, bool)</code>. Reading a map with two variables, <code>probs, ok := scenarios[name]</code>, is the comma-ok form from the primer: a missing key yields the zero value and <code>ok == false</code>, not an error. The function clones the slice for the same reason <code>NewEnv</code> does. Map iteration order is random on purpose, so <code>ScenarioNames</code> collects the keys with <code>maps.Keys</code> and sorts them. The four scenarios are used throughout the course:</p>
 <table>
   <thead><tr><th>Name</th><th>Arm probabilities</th><th>What it tests</th></tr></thead>
   <tbody>
@@ -85,51 +109,101 @@
 </table>
 
 <h2>Step 5: the epsilon-greedy policy</h2>
-<p>The policy keeps, for each arm, how many times it was pulled and the running mean of its rewards. Two parallel slices indexed by arm are all it needs:</p>
+<p>The policy keeps, for each arm, how many times it was pulled and the running mean of its rewards. Two parallel slices indexed by arm are all it needs, and both are created with <code>make</code> so they start as zeros. This part is given:</p>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy,NewEpsilonGreedy -->
-<p><code>Epsilon</code> is capitalised, so callers can read and change it; <code>counts</code>, <code>values</code> and <code>rng</code> are private to the package. <code>make([]int, nArms)</code> allocates a slice of that length filled with zeros, which is exactly the initial state we want.</p>
-<p>Selecting an arm is a coin flip between exploring and exploiting:</p>
-<!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Select,EpsilonGreedy.greedy -->
-<p><code>greedy</code> is unexported, so it is an implementation detail of this package. It also contains a subtle point: at the start every mean is 0, so every arm ties. Picking "the first maximum" would always pull arm 0 first and bias the whole run, so ties are broken uniformly at random using <em>reservoir sampling</em>: when the <em>n</em>-th tied arm is seen, it replaces the current choice with probability 1/<em>n</em>, which leaves every tied arm equally likely without collecting them in a slice. The <code>switch</code> with no expression is Go's replacement for an <code>if</code>/<code>else if</code> chain; each <code>case</code> is a condition, and there is no fall-through.</p>
-<p>Learning is a one-line running-mean update:</p>
+<p><code>Epsilon</code> is capitalised, so callers can read and change it; <code>counts</code>, <code>values</code> and <code>rng</code> are private to the package. The three methods are yours, in the order they depend on each other.</p>
+
+<details class="exercise" open>
+  <summary>Task 3: <code>Update</code>, the running mean</summary>
+  <div class="ex-body">
+<!-- include: starters/ch01/bandit/epsgreedy.go#EpsilonGreedy.Update -->
+    <p>After a reward arrives, the arm's average must include it, without storing every reward. The primer's <code>RunningMean</code> exercise used this update rule: after <em>n</em> observations, <em>mean += (reward − mean) / n</em>. Run <code>go test -run Update ./bandit</code>.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p>Increment the arm's count first, then use the new count as <em>n</em>. Convert it with <code>float64(...)</code> before dividing.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Update -->
-<p>The identity is <em>mean += (reward − mean) / n</em>. It avoids storing every reward or a separate sum, and never divides by zero because the count is incremented first.</p>
+    <p>Counting first means the divisor is never zero, and the first reward sets the mean to exactly that reward, since <code>0 + (r - 0) / 1</code> is <code>r</code>. The identity avoids keeping a list of rewards or a running sum.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise" open>
+  <summary>Task 4: <code>greedy</code>, and ties</summary>
+  <div class="ex-body">
+<!-- include: starters/ch01/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
+    <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random. The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. Run <code>go test -run Greedy ./bandit</code>.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p>Walk the means, keeping the best index so far and how many arms have tied with it. When you meet an equal value, that makes one more tied arm, and the new arm should replace the current pick with probability 1 out of the number of ties so far, so every tied arm ends up equally likely. <code>p.rng.IntN(ties) == 0</code> is that coin. A better value resets the tie count to 1. A <code>switch</code> with conditions and no value reads well here.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
+    <p>This is <em>reservoir sampling</em> with a reservoir of one: when the <em>k</em>th tied arm turns up, it replaces the current choice with probability 1/<em>k</em>, and a short induction shows every tied arm is equally likely at the end. It does one pass and needs no list of the tied arms.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise" open>
+  <summary>Task 5: <code>Select</code>, explore or exploit</summary>
+  <div class="ex-body">
+<!-- include: starters/ch01/bandit/epsgreedy.go#EpsilonGreedy.Select -->
+    <p>With probability <code>Epsilon</code>, return a uniformly random arm (<code>p.rng.IntN(n)</code> returns 0 to n−1). Otherwise return the greedy arm. Run <code>go test -run Select ./bandit</code>.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Select -->
+    <p>The same generator makes both random choices. That is fine, because it belongs to the policy alone; it is why the environment has its own.</p>
+    </details>
+  </div>
+</details>
 
 <h2>Step 6: the simulation loop</h2>
-<p>A run plays the policy against the environment for a fixed number of steps and records what happened:</p>
-<!-- include: ch01/bandit/sim.go -->
-<p><code>for t := range steps</code> ranges over an integer (Go 1.22+): <code>t</code> takes the values 0 to <code>steps-1</code>. There is no <code>range(steps)</code> object; the loop form is the whole feature.</p>
-<p>Regret here is <em>expected</em> regret. Each pull adds <code>bestP - env.Prob(arm)</code>, the gap in probabilities, rather than comparing the random rewards drawn. A lucky pull of a bad arm therefore still counts against the policy, which makes the curve much less noisy and lets us compare policies with fewer runs. We record the cumulative value after every step in <code>RegretCurve</code>; chapter 4 averages these curves across seeds.</p>
+<p>A run plays the policy against the environment for a fixed number of steps and records what happened. The result type is given:</p>
+<!-- include: ch01/bandit/sim.go#Result -->
+<p>Regret here is <em>expected</em> regret. Each pull adds <code>bestP - env.Prob(arm)</code>, the gap in probabilities, rather than comparing the random rewards actually drawn. A lucky pull of a bad arm therefore still counts against the policy, which makes the curve much less noisy and lets us compare policies with fewer runs. The curve stores the cumulative regret after every step, for the charts in chapter 4.</p>
+
+<details class="exercise" open>
+  <summary>Task 6: <code>Run</code></summary>
+  <div class="ex-body">
+<!-- include: starters/ch01/bandit/sim.go#Run -->
+    <p>Write the loop. In each step: ask the policy for an arm, pull it, tell the policy what happened, and update the result. <code>res</code> needs its two slices allocated before you use them, with <code>make</code>. <code>for t := range steps</code> counts <code>t</code> from 0 to <code>steps-1</code>. Run <code>go test ./bandit</code>; when the last test passes, every task is done.</p>
+    <details class="answer"><summary>Hint</summary>
+    <p>Get the best probability once, before the loop, with <code>_, bestP := env.Best()</code>. The blank identifier <code>_</code> discards a return value you do not need. Then, per step: <code>arm := pol.Select()</code>, <code>reward := env.Pull(arm)</code>, <code>pol.Update(arm, reward)</code>, and the bookkeeping.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch01/bandit/sim.go#Run -->
+    <p>The order of the three calls is the whole simulation: choose, observe, learn. Notice what <code>Run</code> does <em>not</em> do: it never looks inside the policy. Chapter 2 makes that explicit with an interface, so any policy can be plugged in.</p>
+    </details>
+  </div>
+</details>
 
 <h2>Step 7: the command-line program</h2>
-<p><code>main.go</code> is the only file in <code>package main</code>. It parses flags, builds the pieces, runs the simulation, and prints:</p>
+<p><code>main.go</code> is the only file in <code>package main</code>, and it is given. It parses flags, builds the pieces, runs the simulation, and prints:</p>
 <!-- include: ch01/main.go -->
-<p>Details worth noting: <code>flag.String</code> and friends return <em>pointers</em> that are filled in by <code>flag.Parse()</code>, which is why the code dereferences them with <code>*scenario</code>. Writing errors to <code>os.Stderr</code> and exiting with a non-zero code is how a Go program reports failure. And <code>for n := 10; n &lt;= res.Steps; n *= 10</code> is the C-style three-part <code>for</code>. Go has only one looping keyword, and this is one of its forms.</p>
+<p>Details worth noting: <code>flag.String</code> and friends return <em>pointers</em> that <code>flag.Parse()</code> fills in, which is why the code dereferences them with <code>*scenario</code>. Writing errors to <code>os.Stderr</code> and exiting with a non-zero code is how a Go program reports failure. And <code>for n := 10; n &lt;= res.Steps; n *= 10</code> prints the regret at steps 10, 100, 1000, and so on, a compact picture of the curve. Chapter 9 returns to command-line programs properly.</p>
 <p>Run it:</p>
 <!-- transcript: ch01/run -->
-<p>Out of 10,000 pulls, arm 2 (the 0.8 arm) got 9,331; the rest went to exploring. Cumulative regret is about 304, and almost all of it is the price of exploring: exploring uniformly one time in ten across three arms wastes about 0.1 × (0.6 + 0.3) / 3 = 0.03 regret per pull, or 300 over the run. A fixed ε pays this cost for the whole run, however much the policy has already learned; the policies in later chapters explore less as evidence builds.</p>
-<p>Because generators are seeded, this output is identical on every machine. Change the scenario, ε, or step count to see how the numbers move:</p>
+<p>Out of 10,000 pulls, arm 2 (the 0.8 arm) got 9,331; the rest went to exploring. Cumulative regret is about 304, and almost all of it is the price of exploring: exploring uniformly one time in ten across three arms wastes about 0.1 × (0.6 + 0.3) / 3 = 0.03 regret per pull, or 300 over the run. A fixed ε pays this cost for the whole run, even after the answer is obvious. The next chapters replace it with policies that explore less as they learn.</p>
+<p>Because generators are seeded, this output is identical on every machine. Change the scenario, ε or step count to see how the numbers move:</p>
 <!-- transcript: ch01/run-variants -->
 <p>On <code>needle</code> with a smaller ε, 95,310 of 100,000 pulls go to the good arm, but regret still reaches 938: with only 0.05 of exploration spread across ten arms, roughly nine in ten of those exploratory pulls go to a 0.10 arm that is 0.20 worse.</p>
 <p>The unknown-scenario case shows the shape of error handling so far: a message on stderr and exit status 2. (<code>go run</code> prints the <code>exit status</code> line itself.)</p>
 
-<h2>Step 8: a first test</h2>
-<p>Go's test runner is built in. A file ending in <code>_test.go</code> is compiled only for tests, and a function named <code>TestXxx(t *testing.T)</code> in it is run by <code>go test</code>. Chapter 3 covers testing properly; this one just checks the two properties the whole course depends on:</p>
-<!-- include: ch01/bandit/sim_test.go -->
-<p>Because everything is seeded, "explore beats never exploring" is not a flaky statistical test. It always gives the same answer for the same code, and it is averaged over ten seeds only so the conclusion does not hinge on one lucky start.</p>
-
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
-<!-- transcript: ch01/verify -->
-<!-- tests -->
-<p>The same checks by hand, from your project directory; all should succeed with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit and costs little).</p>
+<p>When all six tasks are done, these all succeed, with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit). Then <code>go run . -seed 7 -steps 1000</code> should match the last lines:</p>
 <!-- transcript: ch01/checkpoint -->
-<p>Test timings vary between machines; the simulation numbers do not.</p>
+<p>Test timings vary between machines; the simulation numbers do not. If a task will not come out right, <code>tools/start.sh ch01 somewhere-else</code> copies the finished chapter so you can compare.</p>
 </div>
 
-<h2>Exercises</h2>
-<p>Starter code and tests are in <code>exercises/ch01</code>. Each exercise has a stub with a <code>// TODO</code>; run <code>go test ./ex1</code> (and so on) from that directory until it passes.</p>
+<h2>Try it</h2>
+<p>Before you run each of these, say what you expect. The point is to notice when the result surprises you.</p>
+<ul>
+  <li><code>go run . -eps 0</code>: never exploring. Does it find the best arm on <code>easy</code>? On <code>close</code>? Try a few seeds with <code>-seed</code>.</li>
+  <li><code>go run . -eps 1</code>: always exploring. What should the pulls per arm look like, and what should the regret be after 10,000 steps on <code>easy</code>? You can work it out on paper.</li>
+  <li><code>go run . -scenario spread -steps 100000</code>. Which arms get most of the pulls?</li>
+</ul>
+
+<h2>More practice</h2>
+<p>Three small self-contained exercises, in <code>exercises/ch01</code>. They do not touch your project; each is a stub with tests. Do them now or come back later.</p>
 
 <details class="exercise">
   <summary>1. Empirical rates (zero values)</summary>

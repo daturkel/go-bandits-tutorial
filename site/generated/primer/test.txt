@@ -1,0 +1,8 @@
+$ go test -v ./stats 2>&1 | grep -v "^=== RUN"
+--- PASS: TestMean (0.00s)
+    --- PASS: TestMean/empty (0.00s)
+    --- PASS: TestMean/one (0.00s)
+    --- PASS: TestMean/several (0.00s)
+    --- PASS: TestMean/negative (0.00s)
+PASS
+ok  	primer/stats	(cached)

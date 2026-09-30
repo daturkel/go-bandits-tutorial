@@ -1,0 +1,4 @@
+$ go run ./types
+left: 3 pulls, mean 0.67
+original: 4 copy: 3 same struct: 4
+{Name:right pulls:0 total:0}

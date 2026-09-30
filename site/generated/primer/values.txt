@@ -1,0 +1,5 @@
+$ go run ./values
+10 7.5 epsilon-greedy true 3
+zero values: 0 "" false 0
+average reward: 0.75
+3 3.5 1

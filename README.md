@@ -15,22 +15,24 @@ Each chapter page explains what it builds and why, introduces language features 
 
 ## Following along
 
-The intended path is to build the project yourself, one chapter at a time, in a directory of your own. `work/banditlab` inside your clone is convenient (git ignores `work/`), and the commands below assume it; anywhere works.
+Start with the **primer** (`site/primer.html`): a short tour of the Go you need, with runnable examples in `primer/` and small tasks in `exercises/primer`. Then work through the chapters in order.
 
-1. Chapter 1 starts from an empty directory. Each later chapter starts from your project as it stood at the end of the previous one.
-2. Type or copy each listing from the page. Highlighted lines are new in that chapter; excerpts omit `package` and imports (gopls adds imports on save).
-3. At the end of a chapter, check your work against the reference tests:
+**The new format (primer, chapters 1 and 2).** Each chapter comes with a starter project in `starters/chNN`: the previous chapter's finished project with the interesting parts removed. The page explains the tasks in order, marked `TASK n` in the code, and the tests fail until you write them. Tasks have a hint and an answer behind a click. The starter also contains code you do not write; the page shows and explains it.
 
-   ```sh
-   tools/check.sh ch03 work/banditlab
-   ```
+```sh
+tools/starter.sh ch01 work/banditlab   # copy the starter; work/ is ignored by git
+cd work/banditlab && go test ./...     # see what is missing
+```
 
-   The script copies your project aside, swaps in that chapter's reference tests, and runs `gofmt`, `go vet`, `go build` and `go test -race`. It never modifies your files. A compile error usually means a name differs from the page.
-4. If your project has drifted, or you want to skip ahead, start from the reference version of any chapter:
+Your own code is not carried from one chapter to the next: every chapter begins from a starter built on the reference solution to the last one. `tools/check_starters.sh` checks that each starter's tests fail, that the reference solution passes them, and that untouched files match.
 
-   ```sh
-   tools/start.sh ch05 work/banditlab   # copies solutions/ch05 into a new directory
-   ```
+**The older format (chapters 3 to 14 and the capstone)** is still the original: build one project yourself, chapter by chapter. Type or copy each listing (highlighted lines are new; excerpts omit `package` and imports), then check your work against the chapter's reference tests:
+
+```sh
+tools/check.sh ch03 work/banditlab
+```
+
+The script copies your project aside, swaps in that chapter's reference tests, and runs `gofmt`, `go vet`, `go build` and `go test -race`. It never modifies your files. To skip ahead or recover, `tools/start.sh ch05 work/banditlab` copies the finished reference project of a chapter into a new directory.
 
 The builder fails if a chapter adds source lines that its page neither shows nor tells you to copy, so the pages are enough to reconstruct each chapter.
 

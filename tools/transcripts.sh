@@ -23,6 +23,32 @@ t() {
   echo "wrote ${out#$ROOT/}"
 }
 
+# ts <chapter> <name> <commands...>: run each command in starters/<chapter>.
+ts() {
+  local id=$1 name=$2; shift 2
+  local out="$ROOT/site/generated/$id/$name.txt"
+  mkdir -p "$(dirname "$out")"
+  : > "$out"
+  for cmd in "$@"; do
+    echo "\$ $cmd" >> "$out"
+    (cd "$ROOT/starters/$id" && eval "$cmd") >> "$out" 2>&1
+  done
+  echo "wrote ${out#$ROOT/}"
+}
+
+# tp <name> <commands...>: run each command in primer/.
+tp() {
+  local name=$1; shift
+  local out="$ROOT/site/generated/primer/$name.txt"
+  mkdir -p "$(dirname "$out")"
+  : > "$out"
+  for cmd in "$@"; do
+    echo "\$ $cmd" >> "$out"
+    (cd "$ROOT/primer" && eval "$cmd") >> "$out" 2>&1
+  done
+  echo "wrote ${out#$ROOT/}"
+}
+
 # tfresh <chapter> <name> <commands...>: run in an empty scratch directory.
 tfresh() {
   local id=$1 name=$2; shift 2
@@ -49,16 +75,26 @@ verify() {
   echo "wrote ${out#$ROOT/}"
 }
 
+primer() {
+  tp version 'go version'
+  tp hello 'go run ./hello'
+  tp values 'go run ./values'
+  tp functions 'go run ./functions'
+  tp control 'go run ./control'
+  tp collections 'go run ./collections'
+  tp types 'go run ./types'
+  tp test 'go test -v ./stats 2>&1 | grep -v "^=== RUN"'
+}
 ch01() {
-  verify ch01
   tfresh ch01 mod-init 'mkdir banditlab && cd banditlab && go mod init banditlab && cat go.mod'
+  ts ch01 starter-tests "go test ./... 2>&1 | grep -E '^(--- FAIL|FAIL|ok)'"
   t ch01 run 'go run .'
   t ch01 run-variants 'go run . -scenario needle -eps 0.05 -steps 100000' 'go run . -scenario nope'
   t ch01 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . -seed 7 -steps 1000'
 }
 
 ch02() {
-  verify ch02
+  ts ch02 starter-tests 'go test ./... 2>&1 | head -8'
   t ch02 run 'go run .'
   t ch02 run-one 'go run . -scenario spread -policy ucb1 -steps 20000'
   t ch02 value-receiver 'go run ./_examples'
@@ -268,5 +304,5 @@ capstone() {
   t capstone checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14 capstone; fi
+if [ $# -eq 0 ]; then set -- primer ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14 capstone; fi
 for c in "$@"; do "$c"; done

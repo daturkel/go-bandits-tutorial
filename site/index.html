@@ -23,7 +23,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
     <details class="menu">
       <summary>Chapters</summary>
       <ol>
-      <li><a href="ch01.html"><span class="n">01</span> Modules, packages, first simulation</a></li><li><a href="ch02.html"><span class="n">02</span> Interfaces and methods</a></li><li><a href="ch03.html"><span class="n">03</span> Errors, tests, benchmarks</a></li><li><a href="ch04.html"><span class="n">04</span> Generics and the comparison harness</a></li><li><a href="ch05.html"><span class="n">05</span> Goroutines and channels</a></li><li><a href="ch06.html"><span class="n">06</span> Shared state</a></li><li><a href="ch07.html"><span class="n">07</span> Context, select, worker pools</a></li><li><a href="ch08.html"><span class="n">08</span> net/http</a></li><li><a href="ch09.html"><span class="n">09</span> Structure and operations</a></li><li><a href="ch10.html"><span class="n">10</span> Persistence and delayed feedback</a></li><li><a href="ch11.html"><span class="n">11</span> Observability and performance</a></li><li><a href="ch12.html"><span class="n">12</span> Why naive replicas break the bandit</a></li><li><a href="ch13.html"><span class="n">13</span> Splitting into services</a></li><li><a href="ch14.html"><span class="n">14</span> Running the system</a></li><li><a href="capstone.html"><span class="n">★</span> End-to-end load test</a></li>
+      <li><a href="primer.html"><span class="n">0</span> Go in an hour</a></li><li><a href="ch01.html"><span class="n">01</span> Modules, packages, first simulation</a></li><li><a href="ch02.html"><span class="n">02</span> Interfaces and methods</a></li><li><a href="ch03.html"><span class="n">03</span> Errors, tests, benchmarks</a></li><li><a href="ch04.html"><span class="n">04</span> Generics and the comparison harness</a></li><li><a href="ch05.html"><span class="n">05</span> Goroutines and channels</a></li><li><a href="ch06.html"><span class="n">06</span> Shared state</a></li><li><a href="ch07.html"><span class="n">07</span> Context, select, worker pools</a></li><li><a href="ch08.html"><span class="n">08</span> net/http</a></li><li><a href="ch09.html"><span class="n">09</span> Structure and operations</a></li><li><a href="ch10.html"><span class="n">10</span> Persistence and delayed feedback</a></li><li><a href="ch11.html"><span class="n">11</span> Observability and performance</a></li><li><a href="ch12.html"><span class="n">12</span> Why naive replicas break the bandit</a></li><li><a href="ch13.html"><span class="n">13</span> Splitting into services</a></li><li><a href="ch14.html"><span class="n">14</span> Running the system</a></li><li><a href="capstone.html"><span class="n">★</span> End-to-end load test</a></li>
       </ol>
     </details>
     <button type="button" id="theme-toggle" class="icon-btn" aria-label="Switch colour theme" title="Switch colour theme">
@@ -48,7 +48,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
   <li><strong>Each chapter is a complete snapshot.</strong> <code>cd solutions/ch05 &amp;&amp; go test -race ./...</code> works without anything else. Lines a chapter adds are marked in the margin of its listings.</li>
   <li><strong>Exercises have tests.</strong> Each chapter ships starters in <code>exercises/chNN</code> that fail until you implement them; reference answers sit under a fold on the page.</li>
 </ul>
-<p>You need Go 1.27 or newer. Start with <a href="ch01.html">Chapter 1</a>, or read <a href="../README.md">the README</a> for how to run any chapter.</p>
+<p>You need Go 1.27 or newer. Start with <a href="primer.html">Primer</a>, or read <a href="../README.md">the README</a> for how to run any chapter.</p>
 
 <h2 id="what-you-will-have-after-chapter-4">What you will have after chapter 4</h2>
 <p>A simulator that compares bandit policies over many random seeds, with its results drawn by the code you wrote. This chart is its actual output; the later chapters put the same policies behind an HTTP service, then behind several replicas that have to agree.</p>
@@ -105,6 +105,12 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 </svg>
 <figcaption>Cumulative regret of four policies on a ten-arm problem, mean of 100 seeds (generated in chapter 4). <a href="generated/ch04/regret-needle.svg">Standalone SVG</a></figcaption></figure>
 
+<section class="part">
+<h2 id="start-here">Start here</h2>
+<ol class="chapter-list">
+<li class="chapter-card ready"><a href="primer.html"><span class="reel" aria-hidden="true">0</span><span class="card-body"><span class="card-title">Go in an hour</span><span class="card-sum">The basics of Go you need before chapter 1: values, functions, control flow, slices and maps, structs, tests.</span></span><span class="badge">Ready</span></a></li>
+</ol>
+</section>
 <section class="part">
 <h2 id="part-i-language-core">Part I: Language core</h2>
 <ol class="chapter-list">

@@ -1,0 +1,8 @@
+$ go test ./... 2>&1 | head -8
+# banditlab/bandit
+bandit/sim.go:22:20: pol.Name undefined (type Policy has no field or method Name)
+bandit/sim.go:28:14: pol.Select undefined (type Policy has no field or method Select)
+bandit/sim.go:30:7: pol.Update undefined (type Policy has no field or method Update)
+FAIL	banditlab [build failed]
+FAIL	banditlab/bandit [build failed]
+FAIL

@@ -1,0 +1,15 @@
+$ go test ./... 2>&1 | grep -E '^(--- FAIL|FAIL|ok)'
+--- FAIL: TestPullMatchesTheArmProbability (0.00s)
+--- FAIL: TestBest (0.00s)
+--- FAIL: TestUpdateKeepsARunningMean (0.00s)
+--- FAIL: TestGreedyPicksTheLargestMean (0.00s)
+--- FAIL: TestGreedyBreaksTiesAtRandom (0.00s)
+--- FAIL: TestGreedyTieAmongLeadersOnly (0.00s)
+--- FAIL: TestSelectWithEpsilonZeroAlwaysExploits (0.00s)
+--- FAIL: TestSelectWithEpsilonOneAlwaysExplores (0.00s)
+--- FAIL: TestSelectMixesExploringAndExploiting (0.00s)
+--- FAIL: TestRunAccounting (0.00s)
+--- FAIL: TestExploringBeatsNeverExploring (0.00s)
+FAIL
+FAIL	banditlab/bandit	0.004s
+FAIL

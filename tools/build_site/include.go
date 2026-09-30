@@ -148,7 +148,7 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	file, frag, _ := strings.Cut(target, "#")
 	// Paths under exercises/ are relative to the repository root; everything
 	// else is relative to solutions/.
-	isExercise := strings.HasPrefix(file, "exercises/")
+	isExercise := strings.HasPrefix(file, "exercises/") || strings.HasPrefix(file, "starters/") || strings.HasPrefix(file, "primer/")
 	base := filepath.Join(b.root, "solutions")
 	if isExercise {
 		base = b.root
@@ -238,9 +238,12 @@ func (b *builder) renderInclude(spec string) (string, error) {
 	if name == "" {
 		_, rel, _ := strings.Cut(file, "/")
 		name = rel
-		if isExercise { // exercises/chNN/exM/... -> exM/...
+		if isExercise { // exercises/chNN/exM/... -> exM/...; starters/chNN/... -> ...; primer/x/... -> x/...
 			parts := strings.SplitN(file, "/", 3)
 			name = parts[2]
+			if parts[0] == "primer" {
+				name = strings.TrimPrefix(file, "primer/")
+			}
 		}
 	}
 	meta := ""

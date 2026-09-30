@@ -1,0 +1,116 @@
+<h2>What this page is for</h2>
+<p>The rest of the course builds one program, a simulation of a multi-armed bandit that grows into a set of services. Each chapter introduces the Go it needs as it goes. This page is the short version of the basics you should have seen once before chapter 1 starts, so that the first chapter can spend its time on the project.</p>
+<p>It is a warm-up, not a full tutorial. The examples are small programs in the <code>primer/</code> directory of the repository. Run each one, change something, and see what happens. At the end of each section is a small task with tests; write the function, run <code>go test</code>, and open the answer only when you are done or stuck. If a section already feels familiar, skip to its task. If you want more depth on any of it, <a href="https://go.dev/tour/">A Tour of Go</a> and <a href="https://go.dev/doc/effective_go">Effective Go</a> are the standard references.</p>
+<p>Nothing needs explaining twice: when a later chapter uses something this page only mentions, that chapter explains it.</p>
+
+<h2>Setup</h2>
+<p>Install Go from <a href="https://go.dev/dl/">go.dev/dl</a>. This course was written against Go 1.27, and the <code>go.mod</code> files pin the toolchain, so any Go 1.21 or later will download the right version by itself. Check that it works:</p>
+<!-- transcript: primer/version -->
+<p>Then clone the repository. The tasks are in <code>exercises/primer</code>, the examples in <code>primer</code>. Go programs are built from <strong>modules</strong> (a directory with a <code>go.mod</code> file) that hold <strong>packages</strong> (one directory each, all files declaring the same <code>package</code> name). The examples here are a module called <code>primer</code>; each subdirectory is a small program.</p>
+
+<h2>1. Hello, and the tools</h2>
+<!-- include: primer/hello/main.go -->
+<p>A program starts in <code>func main()</code> of <code>package main</code>. <code>import</code> lists the packages you use; <code>fmt</code> is the standard library's formatting package. A name from another package is written <code>package.Name</code>, and only names that start with a capital letter are visible outside their package. That one rule is all Go has in place of <code>public</code> and <code>private</code>.</p>
+<!-- transcript: primer/hello -->
+<p><code>go run .</code> compiles and runs the package in the current directory. Go is a compiled language, so <code>go build</code> produces a single executable with no dependencies, which is much of why it is popular for services. Three other commands you will use constantly:</p>
+<ul>
+  <li><code>gofmt -w .</code> reformats code into the one standard style. Nobody argues about formatting in Go; your editor probably runs it on save.</li>
+  <li><code>go vet ./...</code> finds suspicious code the compiler accepts.</li>
+  <li><code>go test ./...</code> runs the tests. Section 7 shows one.</li>
+</ul>
+
+<h2>2. Values and types</h2>
+<!-- include: primer/values/main.go -->
+<!-- transcript: primer/values -->
+<p>Three things here differ from a dynamically typed language:</p>
+<ul>
+  <li><strong>Types are checked before the program runs.</strong> <code>reward / pulls</code> with a <code>float64</code> and an <code>int</code> does not compile. You convert explicitly with <code>float64(pulls)</code>. It is more typing and it removes a class of bugs.</li>
+  <li><strong>Every type has a zero value</strong> and variables start there: <code>0</code>, <code>""</code>, <code>false</code>, <code>nil</code>. There is no "undefined". Well-designed Go types are useful in their zero state, and section 6 uses that.</li>
+  <li><strong><code>:=</code> is declaration, <code>=</code> is assignment.</strong> <code>x := 1</code> creates <code>x</code>; a second <code>x := 2</code> in the same scope is an error because it is already declared.</li>
+</ul>
+<details class="exercise">
+  <summary>Your turn: a percentage</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. Convert to floating point before you divide, and return 0 when <code>total</code> is 0. Run <code>go test</code> in that directory.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: exercises/primer/ex1/reference/percent.go#Percent -->
+    <p>Dividing two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction.</p>
+    </details>
+  </div>
+</details>
+
+<h2>3. Functions and errors</h2>
+<!-- include: primer/functions/main.go -->
+<!-- transcript: primer/functions -->
+<p>A function can return several values, and the standard way to report failure is to return an <code>error</code> as the last one. <code>nil</code> means success. The caller checks it with <code>if err != nil</code>, and you will write that line thousands of times. There are no exceptions: an error is an ordinary value you must decide what to do with. <code>fmt.Errorf</code> builds one, and <code>%w</code> wraps another error inside it so that the cause is not lost. (Chapter 3 is about errors properly.)</p>
+<aside class="callout py">
+  <p class="callout-title">Go vs. Python</p>
+  <p>Python would raise <code>ValueError</code> from <code>int("seventy")</code> and let it climb the stack. Go returns the failure to the immediate caller, every time. The code is longer and the control flow is visible on the page.</p>
+</aside>
+<details class="exercise">
+  <summary>Your turn: parse a probability</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/primer/ex2/probability.go</code>, write <code>ParseProbability(s string) (float64, error)</code>: parse the text with <code>strconv.ParseFloat</code>, and reject anything that is not a number from 0 to 1. Chapter 1's command line will use this idea for its flags.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: exercises/primer/ex2/reference/probability.go#ParseProbability -->
+    <p>The range check is written as <code>!(p &gt;= 0 &amp;&amp; p &lt;= 1)</code> instead of <code>p &lt; 0 || p &gt; 1</code> because <code>NaN</code> ("not a number", which <code>ParseFloat</code> accepts) is neither less than nor greater than anything, so the second form would let it through.</p>
+    </details>
+  </div>
+</details>
+
+<h2>4. Control flow</h2>
+<!-- include: primer/control/main.go -->
+<!-- transcript: primer/control -->
+<p>Go has one loop keyword, <code>for</code>, in four shapes: the classic three-part loop, a condition only (its <code>while</code>), <code>range</code> over a collection, and <code>range</code> over an integer. <code>switch</code> takes the first matching case and stops; there is no fall-through and no <code>break</code> to write. An <code>if</code> may begin with a short statement, and the variable it declares exists only inside that <code>if</code> and its <code>else</code> branches, which keeps temporary values from leaking into the rest of the function.</p>
+<details class="exercise">
+  <summary>Your turn: the longest winning streak</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/primer/ex3/streak.go</code>, write <code>LongestStreak(rewards []int) int</code>: the longest run of consecutive 1s. You need a loop, an <code>if</code>, and two counters.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: exercises/primer/ex3/reference/streak.go#LongestStreak -->
+    <p><code>current</code> counts the run in progress and resets on a 0; <code>best</code> remembers the largest it ever reached. <code>max</code> is a built-in function (since Go 1.21).</p>
+    </details>
+  </div>
+</details>
+
+<h2>5. Slices and maps</h2>
+<!-- include: primer/collections/main.go -->
+<!-- transcript: primer/collections -->
+<p>A <strong>slice</strong> is the everyday list. It is a small header (a pointer to an array, a length and a capacity), so assigning a slice or slicing one, as in <code>a[:2]</code>, gives you another view onto the <em>same</em> elements. That is why changing <code>b[0]</code> changed <code>a</code> above. When you need independence, copy with <code>slices.Clone</code>. <code>append</code> returns the (possibly new) slice, so you always write <code>a = append(a, x)</code>. <code>make([]int, n)</code> creates a slice of <code>n</code> zeros.</p>
+<p>A <strong>map</strong> is a dictionary. Looking up a key that is missing gives the zero value, which makes counting easy (<code>m[k]++</code> works on a new key). To tell "missing" from "present and zero", use the two-value form <code>v, ok := m[k]</code>, called comma-ok. Iteration order is random by design, so sort the keys if the order matters.</p>
+<details class="exercise">
+  <summary>Your turn: count the pulls</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/primer/ex4/tally.go</code>, write <code>Tally(pulls []int, arms int) []int</code>: for a list of arm numbers, return how many times each arm appears. Ignore numbers that are not valid arms.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: exercises/primer/ex4/reference/tally.go#Tally -->
+    <p>The result slice has to exist before you index into it, which is what <code>make</code> is for. The bounds check matters: indexing outside a slice is a runtime panic, not a silent zero.</p>
+    </details>
+  </div>
+</details>
+
+<h2>6. Structs, methods and pointers</h2>
+<!-- include: primer/types/main.go -->
+<!-- transcript: primer/types -->
+<p>A <strong>struct</strong> groups fields. A <strong>method</strong> is a function with a receiver written before its name. A receiver of type <code>*Arm</code> (a pointer) works on the caller's value and can change it; a receiver of type <code>Arm</code> would get a copy. Structs are copied when assigned or passed, pointers are not, which the last lines of <code>main</code> demonstrate. Go has no constructors. By convention a function called <code>NewArm</code> returns a ready-to-use <code>*Arm</code>, and lowercase field names keep other packages from bypassing it.</p>
+<p>You do not need to master pointers now. The rule that covers most of what you will write: if a method changes the struct, give it a pointer receiver, and use the same kind for all methods of a type.</p>
+<details class="exercise">
+  <summary>Your turn: a running mean</summary>
+  <div class="ex-body">
+    <p>In <code>exercises/primer/ex5/mean.go</code>, fill in the type <code>RunningMean</code> and its three methods. Its zero value must work without a constructor. This is the same update rule the bandit policy uses in chapter 1, so it is worth doing now.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: exercises/primer/ex5/reference/mean.go#RunningMean,RunningMean.Add,RunningMean.Mean,RunningMean.N -->
+    <p>Both fields start at 0, and the first <code>Add</code> computes <code>0 + (x - 0) / 1</code>, which is <code>x</code>. Designing the type so the zero value is valid is a habit worth forming: callers get one less thing to remember.</p>
+    </details>
+  </div>
+</details>
+
+<h2>7. Packages and tests</h2>
+<!-- include: primer/stats/mean.go -->
+<!-- include: primer/stats/mean_test.go -->
+<!-- transcript: primer/test -->
+<p>Tests are ordinary Go, in files ending <code>_test.go</code>, in the same package. A test is a function named <code>TestSomething(t *testing.T)</code>. This one is <strong>table-driven</strong>: a slice of cases, run in a loop, each as a named subtest with <code>t.Run</code>. It is the usual shape for Go tests, and chapter 3 is about writing them well. <code>go test</code> compiles the package with its tests and runs them. From now on every task in the course comes with tests that define "done".</p>
+<p>The test file is in the same directory as the code it tests, and the package is imported elsewhere by its path: the module path plus the directory. In chapter 1 your project's module is called <code>banditlab</code>, and the package in its <code>bandit</code> directory is <code>banditlab/bandit</code>.</p>
+
+<h2>Ready?</h2>
+<p>You have seen enough to start. Chapter 1 sets up the project and asks you to write the first pieces of the simulation. When something in it is unfamiliar, the chapter's own introduction says what you need, and anything it does not explain yet it says will come later.</p>

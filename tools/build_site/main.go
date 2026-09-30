@@ -27,14 +27,26 @@ type Chapter struct {
 	Part    string `json:"part"`
 	Summary string `json:"summary"`
 	Status  string `json:"status"` // ready | planned
+
+	// Starter marks a chapter whose reader works from starters/<id> (a
+	// partly finished project) instead of their own project from the last
+	// chapter. Start, if set, replaces the "Starting point" text.
+	Starter bool   `json:"starter"`
+	Start   string `json:"start"`
 }
+
+// StartHTML is Start as trusted HTML (chapters.json is our own file).
+func (c Chapter) StartHTML() template.HTML { return template.HTML(c.Start) }
 
 func (c Chapter) Ready() bool  { return c.Status == "ready" }
 func (c Chapter) File() string { return c.ID + ".html" }
 
 // Number is the short reel label shown next to the title: "01" or "★".
 func (c Chapter) Number() string {
-	if strings.HasPrefix(c.ID, "ch") {
+	switch {
+	case c.ID == "primer":
+		return "0"
+	case strings.HasPrefix(c.ID, "ch"):
 		return c.ID[2:]
 	}
 	return "★"

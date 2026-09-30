@@ -1,0 +1,10 @@
+$ go run ./collections
+[10 20 30 40] 4
+[0 0 1 0]
+a: [99 20 30 40] b: [99 20]
+a: [99 20 30 40] c: [-1 20 30 40]
+3 2 0
+nobody is not in the map: 0 false
+thompson 2
+ucb1 3
+1

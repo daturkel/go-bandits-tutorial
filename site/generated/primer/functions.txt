@@ -1,0 +1,7 @@
+$ go run ./functions
+5
+0.25 <nil>
+error: division by zero
+percent: 75
+error: parsePercent "seventy": strconv.Atoi: parsing "seventy": invalid syntax
+error: parsePercent: 150 is not between 0 and 100
