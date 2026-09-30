@@ -22,10 +22,9 @@
 
 - Chapter 10: the `docker run ... postgres:16` command shown as an alternative to `tools/pg.sh` was not run (no Docker daemon). The Redis design note has no code behind it.
 
-- Chapter 14: Dockerfiles, Compose files, and health checks cannot be built or run without a Docker daemon. They will be written and reviewed by hand, and the chapter and its commit message will say so.
-- Multi-container load balancing (chapter 14) has the same limitation; a local process-level substitute will be used and labelled.
+- Chapter 14: **no image was built and no container started** (no Docker daemon). `docker compose config` validated `compose.yaml` (syntax, interpolation); the Dockerfiles were written and reviewed by hand and never built, so base-image tags (`golang:1.27.1`, `gcr.io/distroless/static-debian12:nonroot`, `python:3.12-slim`, `postgres:16`) are unchecked, as is Compose DNS returning all replica addresses to `dns:///policyd:9090` and the `client` service. `_examples/local-cluster.sh` ran the same binaries, environment variables and health-check command as processes, and that output is real. The Python client and its tests ran for real (Python 3.11, grpcio from PyPI).
 
 ## Deferred
 
-- Chapter 14 and the capstone (see `site/src/chapters.json` for status).
+- The capstone (see `site/src/chapters.json` for status).
 - Timing figures in transcripts (`go test`, benchmarks) come from the machine that ran `tools/transcripts.sh` and will differ on yours. Seeded simulation output is exact.

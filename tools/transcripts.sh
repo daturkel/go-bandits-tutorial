@@ -244,5 +244,20 @@ ch13() {
   t ch13 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
 }
 
-if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13; fi
+ch14() {
+  "$ROOT/tools/pg.sh" start > /dev/null
+  export PATH="$(go env GOPATH)/bin:$PATH"
+  ( unset BANDIT_TEST_DATABASE_URL; verify ch14 )
+  local pgurl="postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable"
+  local venv=/tmp/banditlab-venv
+  [ -x "$venv/bin/python" ] || { python3 -m venv "$venv" && "$venv/bin/pip" install -q -r "$ROOT/solutions/ch14/clients/python/requirements.txt"; } > /dev/null 2>&1
+
+  t ch14 compose 'docker compose --profile demo config -q && echo "compose.yaml: valid"' 'docker compose --profile demo config --format json | python3 _examples/compose_summary.py'
+  t ch14 python "cd clients/python && PATH=$venv/bin:\$PATH sh generate.sh && ls gen/bandit/v1" "cd clients/python && PATH=$venv/bin:\$PATH python -m unittest -v 2>&1 | grep -E '^(test_|Ran|OK|FAILED)' | sed -E 's/ \(test_client[^)]*\)//'"
+  t ch14 cluster 'go build -o /tmp/g14/ ./cmd/aggregatord ./cmd/feedbackd ./cmd/policyd ./cmd/banditrpc' \
+    "DATABASE_URL='$pgurl' BIN=/tmp/g14 PYTHON=$venv/bin/python bash _examples/local-cluster.sh"
+  t ch14 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run ./cmd/banditsim run -seed 7 -steps 1000'
+}
+
+if [ $# -eq 0 ]; then set -- ch01 ch02 ch03 ch04 ch05 ch06 ch07 ch08 ch09 ch10 ch11 ch12 ch13 ch14; fi
 for c in "$@"; do "$c"; done

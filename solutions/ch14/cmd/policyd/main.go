@@ -1,0 +1,9 @@
+// Command policyd is one of the gRPC services; see its package for what it does.
+package main
+
+import (
+	"banditlab/internal/apps/policyd"
+	"banditlab/internal/daemon"
+)
+
+func main() { daemon.Main("policyd", policyd.Run) }

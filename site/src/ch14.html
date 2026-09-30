@@ -1,0 +1,155 @@
+<h2>What you will build</h2>
+<p>The system from chapter 13 as something you can start with one command: a multi-stage Dockerfile that builds small images for each service, a Compose file that starts PostgreSQL, the aggregator, the feedback service and three policy replicas in the right order with health checks, and a Python client that calls the replicas through a load balancer. Along the way you will settle a question that catches most people the first time they put gRPC behind a load balancer: why every request went to the same replica.</p>
+
+<h2>Read this first: what was and was not run</h2>
+<p>The environment this chapter was written in had the Docker command-line tools but no Docker daemon, so <strong>no image was built and no container was started</strong>. What was checked:</p>
+<ul>
+  <li><code>docker compose config</code> parsed and validated <code>compose.yaml</code>, including variable interpolation, and its output is shown below. That checks syntax and structure; it does not check that the images build or that the services start inside them.</li>
+  <li>The Dockerfile was written and reviewed by hand and <em>not</em> built. Its <code>go build</code> line is the one the local scripts run, and the statically linked binaries it produces are the ones tested in the previous chapter.</li>
+  <li>The same four programs, with the same environment variables and the same health-check command, were run as ordinary processes by <code>_examples/local-cluster.sh</code>: three policy replicas, one database, a load-balancing client, a killed replica. That is real output, and it is what stands in for the containers.</li>
+  <li>The Python client and its tests were run for real, against fake servers and against the Go services.</li>
+</ul>
+<p>Expect to fix small things the first time you run <code>docker compose up --build</code> on your machine (a registry tag, a permission). Everything that is about how the services behave, as opposed to how they are packaged, was exercised.</p>
+
+<h2>Concepts introduced</h2>
+<ul>
+  <li>Multi-stage Docker builds: a large build stage and a small runtime image</li>
+  <li>Static Go binaries, <code>CGO_ENABLED=0</code>, <code>distroless</code> images, running as non-root</li>
+  <li>Layer caching: why <code>go.mod</code> is copied before the source</li>
+  <li>Health checks, <code>depends_on: condition: service_healthy</code>, and why the check is a program that exits 0 or 1</li>
+  <li>Exec-form <code>ENTRYPOINT</code>, PID 1 and SIGTERM</li>
+  <li>Load balancing gRPC: why a layer-4 balancer does not work, and client-side round robin</li>
+  <li>Evolving a protobuf schema (adding fields) and generating a client in another language</li>
+  <li>Retrying only what is safe to retry</li>
+</ul>
+
+<h2>Step 1: make replicas identifiable</h2>
+<p>To see load balancing working, each response should say who answered. That is an additive schema change, the kind chapter 13 said is safe: two new fields with new numbers.</p>
+<!-- include: ch14/proto/bandit/v1/bandit.proto lines=25-38 -->
+<p>Regenerate with <code>buf generate</code>. The old fields keep their numbers, so a client built from the chapter 13 schema still works against a service built from this one: it ignores the new fields.</p>
+<!-- copy: ch14/internal/gen/bandit/v1/bandit.pb.go why="it is generated from the schema" -->
+<!-- copy: ch14/internal/gen/bandit/v1/bandit_grpc.pb.go why="it is generated from the schema" -->
+<p>The policy service takes an optional <em>instance name</em> through functional options, the pattern from chapter 9, so existing callers of <code>New</code> are unchanged:</p>
+<!-- include: ch14/internal/services/policy/policy.go#Service,Option,WithInstance,New,Service.Select,Service.Stats diff -->
+<!-- include: ch14/internal/services/policy/policy_test.go#TestInstanceNameIsReturned -->
+<p>The daemon defaults the name to the host name. Inside a container that is the container id, so three replicas get three different names with no configuration at all:</p>
+<!-- include: ch14/internal/apps/policyd/policyd.go#Run,hostname diff -->
+
+<h2>Step 2: a health check that means something</h2>
+<p>Docker, Compose and Kubernetes ask a service whether it is healthy by running a command and looking at its exit status. Chapter 13's <code>banditrpc health</code> already called the gRPC health service and printed the answer; now it also <strong>fails unless the answer is SERVING</strong>, and it has a deadline, so a hung service fails the check instead of hanging it. The same client can also spread calls over several backends (step 4):</p>
+<!-- include: ch14/cmd/banditrpc/main.go diff -->
+<!-- include: ch14/cmd/banditrpc/main_test.go#TestRoundRobinSpreadsCalls,TestHealthFailsWhenNotServing -->
+<p>Using our own client as the health checker has a practical reason: a minimal image has no shell, no <code>curl</code>, nothing to run a check with. The check is a second small binary copied into the image next to the service.</p>
+
+<h2>Step 3: the images</h2>
+<p>A Go service is one file, and it should ship as almost nothing else. The Dockerfile has a build stage that has the whole toolchain and a series of final stages that hold one binary each.</p>
+<!-- include: ch14/Dockerfile title="Dockerfile" -->
+<p>Points worth understanding rather than copying:</p>
+<ul>
+  <li><strong>Two <code>COPY</code> steps.</strong> Docker caches each instruction's result and reuses it if its inputs did not change. <code>go.mod</code> and <code>go.sum</code> change rarely, source changes constantly. Downloading dependencies before copying the source means an edit to a <code>.go</code> file re-runs only the compile, not the download.</li>
+  <li><strong><code>CGO_ENABLED=0</code>.</strong> By default a Go program that uses some standard-library packages (DNS, user lookup) links against the system's C library. Turning cgo off makes the pure-Go versions be used, and the binary depends on nothing, which is what lets it run in an image with no C library. It is one of the practical wins of Go for operations.</li>
+  <li><strong><code>distroless/static:nonroot</code>.</strong> No shell, no package manager, no <code>apt</code>: an attacker who finds a way into the process has almost nothing to work with, and there is little to patch. The price is that you cannot <code>docker exec</code> a shell into it; use a debug sidecar or a debug image tag when you need one.</li>
+  <li><strong>Exec-form <code>ENTRYPOINT ["/policyd"]</code>.</strong> With the shell form (<code>ENTRYPOINT /policyd</code>), Docker runs <code>/bin/sh -c /policyd</code>, the shell is process 1, and <code>docker stop</code>'s SIGTERM goes to the shell, which does not forward it. The service would never start its graceful shutdown and Docker would kill it after the timeout. In exec form the service is process 1 and gets the signal, which is what chapter 9 built the shutdown for.</li>
+  <li><strong>The <code>.dockerignore</code> file</strong> keeps the build context small and, more to the point, keeps the cache stable: if editing the Python client changed the context hash, every Go image would rebuild.</li>
+</ul>
+<!-- include: ch14/Dockerfile.dockerignore title="Dockerfile.dockerignore" -->
+<p>Build one image with <code>docker build --target policyd -t banditlab/policyd .</code>. The target names the final stage; stages the target does not depend on are skipped.</p>
+
+<h2>Step 4: Compose</h2>
+<p>Compose describes the whole set of containers, their networks and their start-up order in one file.</p>
+<!-- include: ch14/compose.yaml title="compose.yaml" -->
+<p>What to look at:</p>
+<ul>
+  <li><strong>Configuration comes from the environment.</strong> Every setting the services read (chapter 9's <code>BANDIT_*</code> variables) is set here, and the database password comes from the host's environment with a development default (<code>${POSTGRES_PASSWORD:-bandit}</code>). No image contains a secret.</li>
+  <li><strong>Start-up order is health, not "started".</strong> <code>depends_on</code> alone waits for a container to <em>exist</em>; with <code>condition: service_healthy</code> it waits for the health check to pass. PostgreSQL accepts connections only after it has initialised, and the aggregator must be serving before the policy replicas try to follow it. (The services also retry on their own; the ordering just avoids noisy logs at start-up.)</li>
+  <li><strong>The health check is the command from step 2.</strong> <code>test: ["CMD", ...]</code> is exec form again, so no shell is needed.</li>
+  <li><strong><code>stop_grace_period: 15s</code></strong> is longer than the services' own 10-second shutdown grace, so Docker does not kill a service that is finishing in-flight calls.</li>
+  <li><strong>Three policy replicas, no published port.</strong> Three containers cannot bind the same host port. Other containers reach them by the service name <code>policyd</code>, and Compose's built-in DNS answers that name with the address of every replica.</li>
+</ul>
+<p>Compose can check the file without a Docker daemon. This is the extent to which it was verified (see the note at the top):</p>
+<!-- include: ch14/_examples/compose_summary.py title="_examples/compose_summary.py" -->
+<!-- transcript: ch14/compose -->
+
+<h2>Step 5: load balancing gRPC</h2>
+<p>Put three replicas behind a TCP load balancer and send it a thousand gRPC calls: they all land on one replica. The reason is in how gRPC works. A load balancer at layer 4 chooses a backend when a <em>connection</em> opens. gRPC runs over HTTP/2, which multiplexes many calls over one long-lived connection, so a client opens one connection and every call rides it. The balancer made its choice once.</p>
+<p>The fix is to balance calls, not connections. Two ways:</p>
+<ul>
+  <li><strong>A layer-7 proxy</strong> (Envoy, or the load balancer of a cloud provider with HTTP/2 support) that understands gRPC and picks a backend per call.</li>
+  <li><strong>Client-side balancing.</strong> The client resolves a name to all the replicas' addresses, keeps a connection to each and rotates its calls. gRPC clients do this natively; it needs a resolver that returns every address (<code>dns:///policyd:9090</code>, where the name has several A records, which is how Compose's DNS and Kubernetes headless services present a replicated service) and a policy named <code>round_robin</code> in the client's service config.</li>
+</ul>
+<p>Without that configuration the default, <code>pick_first</code>, uses the first address and stays on it. You can see both behaviours in the demo, from the Go client, before and after the flag. The script runs the topology of <code>compose.yaml</code> as plain processes:</p>
+<!-- include: ch14/_examples/local-cluster.sh title="_examples/local-cluster.sh" -->
+<!-- transcript: ch14/cluster -->
+<p>Reading the output:</p>
+<ul>
+  <li><strong>pick_first: twelve calls, one replica.</strong> Every call to <code>policyd-1</code>, though three are up.</li>
+  <li><strong>round_robin: four each.</strong> The same command with <code>-lb round_robin</code> spreads them evenly.</li>
+  <li><strong>The Python client, sixty calls:</strong> 19, 21 and 20. Its channel is configured for round robin (step 6). The last line is one replica's view of the world: policy replicas that never handled most of those rewards report all of them, learned through the aggregator's stream. The "waiting" counts are the 24 selections the earlier command-line runs made and never rewarded; they are still pending (until their time to live), and the pending-aware UCB1 of chapter 12 steers around arms with many waiting.</li>
+  <li><strong>Killing a replica.</strong> With <code>policyd-2</code> gone, calls go to the other two. gRPC notices the failed connection, marks the address unhealthy and stops sending calls to it; when Compose restarts the container, the client's DNS re-resolution will find it again. The health check of the dead replica fails with exit status 1, which is what makes Compose (or Kubernetes) restart or replace a container.</li>
+  <li><strong>Shutdown.</strong> All four stopped services exit with status 0 after SIGTERM: the graceful shutdown from chapters 9 and 13.</li>
+</ul>
+<p>For an ordinary <code>docker compose up</code> the client side of this is the Python program in the <code>client</code> service, whose target is <code>dns:///policyd:9090</code>. That path (Compose DNS returning three addresses) was not run; the scripted equivalent (three addresses given directly) was.</p>
+
+<h2>Step 6: a Python client</h2>
+<p>The point of a schema language is that the caller does not have to be written in Go. The same <code>.proto</code> file generates Python code. <code>grpcio-tools</code> bundles a copy of the protobuf compiler, so this needs only <code>pip</code>:</p>
+<!-- include: ch14/clients/python/requirements.txt -->
+<!-- include: ch14/clients/python/generate.sh title="clients/python/generate.sh" -->
+<p>The generated stubs are low-level: protobuf messages in, protobuf messages out, and a <code>grpc.RpcError</code> whose <code>.code()</code> you have to inspect. A thin wrapper gives callers ordinary values and exceptions, retries only when retrying is safe, and sets the load-balancing policy once:</p>
+<!-- include: ch14/clients/python/bandit_client.py title="clients/python/bandit_client.py" -->
+<p>The rule in <code>_call</code> deserves a sentence, because it is easy to get wrong in the direction of "retry everything". <code>UNAVAILABLE</code> means the call did not get to the server, or the server was starting or draining, so the same call is fine to repeat. <code>NOT_FOUND</code> or <code>INVALID_ARGUMENT</code> will fail the same way each time. <code>DEADLINE_EXCEEDED</code> is ambiguous: the server may have done the work and be about to answer, so repeating a non-idempotent call can do it twice. Here, retrying a <code>Reward</code> after a timeout would get <code>AlreadyExists</code> at best; the store's claim is what keeps that harmless, which is a reason to make operations idempotent on the server whenever you can.</p>
+<p>The tests run the client against fake servers implemented in Python, in the same process. They check the retry rule, the deadline, the error mapping and the round-robin spread:</p>
+<!-- include: ch14/clients/python/test_client.py title="clients/python/test_client.py" -->
+<!-- transcript: ch14/python -->
+<p>And a small program that plays users: select, flip a weighted coin, reward.</p>
+<!-- include: ch14/clients/python/demo.py title="clients/python/demo.py" -->
+<p>Its output is in the cluster transcript above. Its Dockerfile, for the <code>client</code> service, generates the stubs at build time from the same schema:</p>
+<!-- include: ch14/clients/python/Dockerfile title="clients/python/Dockerfile" -->
+
+<h2>Where this leaves you</h2>
+<p>You have a system with a stateless-enough front (policy replicas that can come and go), a durable core (PostgreSQL), a fast path that keeps replicas current (the aggregator's stream), a reconciliation path that repairs it, health checks and graceful shutdown that let an orchestrator manage it, and a client in a different language. The capstone measures that system end to end.</p>
+
+<h2>Checkpoint</h2>
+<div class="checkpoint">
+<p>Check your project against this chapter's reference tests (the Docker files and the Python client are not part of what the script checks; the transcripts above are how they were checked):</p>
+<!-- transcript: ch14/verify -->
+<!-- tests -->
+<p>The same checks by hand, from your project directory:</p>
+<!-- transcript: ch14/checkpoint -->
+<p>To run the containers, install Docker with the Compose plugin, then <code>docker compose up --build</code> from the project directory, and <code>docker compose --profile demo run --rm client</code> in a second terminal. To try the process-level version, follow the comment at the top of <code>_examples/local-cluster.sh</code>.</p>
+</div>
+
+<h2>Exercises</h2>
+<p>Starters and tests are in <code>exercises/ch14</code>. The module has the gRPC dependency already.</p>
+
+<details class="exercise">
+  <summary>1. A health check that cannot lie</summary>
+  <div class="ex-body">
+    <p>Implement <code>Check(ctx, client, service)</code> in <code>exercises/ch14/ex1</code>: call the gRPC health service and return nil only for <code>SERVING</code>. Anything else (<code>NOT_SERVING</code>, an unknown service, a failed call, a cancelled context) is an error.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch14/ex1/reference/health.go#Check -->
+    <p>The failure modes to avoid are all "returns nil by accident": ignoring the status field (an <code>UNKNOWN</code> response then looks healthy), or swallowing the error when the service name is not registered. A container that reports healthy while it is draining keeps receiving traffic, which is exactly what the health check exists to stop.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>2. Wait until healthy</summary>
+  <div class="ex-body">
+    <p>Implement <code>WaitHealthy(ctx, interval, check)</code> in <code>exercises/ch14/ex2</code>: run <code>check</code> now and then every <code>interval</code> until it succeeds, or until the context ends. When it gives up, the error should carry both the context's error and the last thing <code>check</code> said, so an operator can tell whether the service was refusing connections or answering NOT_SERVING.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch14/ex2/reference/wait.go#WaitHealthy -->
+    <p>The first check runs before the first tick, so a service that is already up costs nothing. <code>errors.Join</code> lets one error satisfy <code>errors.Is</code> for several causes at once, and the check receives the context, so a check that hangs is interrupted when the caller gives up.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise">
+  <summary>3. Parse a list of replicas</summary>
+  <div class="ex-body">
+    <p>Implement <code>ParseTargets(spec)</code> in <code>exercises/ch14/ex3</code>: turn <code>"a:1, b:2,"</code> into <code>["a:1", "b:2"]</code>, and reject entries without a valid port, duplicates, and an empty list, naming the entry at fault.</p>
+    <details class="answer"><summary>Reference answer</summary>
+<!-- include: exercises/ch14/ex3/reference/targets.go#ParseTargets -->
+    <p><code>net.SplitHostPort</code> already handles the bracketed IPv6 form and rejects a bare <code>::1:9090</code>, which is ambiguous (which colon separates the port?). Validating configuration at start-up, with a message that names the bad value, is much cheaper than discovering an empty or duplicated list as uneven traffic in production.</p>
+    </details>
+  </div>
+</details>

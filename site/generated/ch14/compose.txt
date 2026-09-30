@@ -1,0 +1,13 @@
+$ docker compose --profile demo config -q && echo "compose.yaml: valid"
+compose.yaml: valid
+$ docker compose --profile demo config --format json | python3 _examples/compose_summary.py
+aggregatord  from=aggregatord  replicas=1 waits-for=db
+             health: /banditrpc -addr localhost:9092 -timeout 1500ms health
+client       from=-            replicas=1 waits-for=feedbackd,policyd
+             health: -
+db           from=postgres:16  replicas=1 waits-for=-
+             health: pg_isready -U postgres
+feedbackd    from=feedbackd    replicas=1 waits-for=aggregatord,db
+             health: /banditrpc -addr localhost:9091 -timeout 1500ms health
+policyd      from=policyd      replicas=3 waits-for=aggregatord,db
+             health: /banditrpc -addr localhost:9090 -timeout 1500ms health

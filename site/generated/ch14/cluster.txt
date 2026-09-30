@@ -1,0 +1,30 @@
+$ go build -o /tmp/g14/ ./cmd/aggregatord ./cmd/feedbackd ./cmd/policyd ./cmd/banditrpc
+$ DATABASE_URL='postgres://postgres@127.0.0.1:55432/postgres?sslmode=disable' BIN=/tmp/g14 PYTHON=/tmp/banditlab-venv/bin/python bash _examples/local-cluster.sh
+== up: aggregator, feedback, and three policy replicas ==
+
+== twelve selections, default client (pick_first): who answered? ==
+     12 policyd-1
+
+== twelve selections, -lb round_robin ==
+      3 policyd-1
+      5 policyd-2
+      4 policyd-3
+
+== the Python client, 60 selections and rewards through the same replicas ==
+answered by: policyd-1=20, policyd-2=19, policyd-3=21
+arm choices: [0, 23, 37]
+second reward: AlreadyRewarded
+unknown id: UnknownRequest
+one replica's view (policyd-3): ['arm 0: 0 pulls, mean 0.00, 9 waiting', 'arm 1: 23 pulls, mean 0.52, 8 waiting', 'arm 2: 38 pulls, mean 0.82, 7 waiting']
+
+== replica policyd-2 is killed; round_robin routes around it ==
+      5 policyd-1
+      7 policyd-3
+health of the dead replica: banditrpc: Unavailable: connection error: desc = "transport: Error whi
+exit status of that health check: 1
+
+== SIGTERM to the rest ==
+aggregatord exited with status 0
+feedbackd exited with status 0
+policyd-1 exited with status 0
+policyd-3 exited with status 0

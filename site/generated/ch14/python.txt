@@ -1,0 +1,15 @@
+$ cd clients/python && PATH=/tmp/banditlab-venv/bin:$PATH sh generate.sh && ls gen/bandit/v1
+__init__.py
+__pycache__
+bandit_pb2.py
+bandit_pb2_grpc.py
+$ cd clients/python && PATH=/tmp/banditlab-venv/bin:$PATH python -m unittest -v 2>&1 | grep -E '^(test_|Ran|OK|FAILED)' | sed -E 's/ \(test_client[^)]*\)//'
+test_client_errors_are_not_retried ... ok
+test_deadline_is_enforced ... ok
+test_gives_up_after_the_retries ... ok
+test_repeated_reward_is_a_distinct_error ... ok
+test_retries_unavailable_then_succeeds ... ok
+test_select_returns_plain_values ... ok
+test_calls_alternate_between_backends ... ok
+Ran 7 tests in 0.358s
+OK
