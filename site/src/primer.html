@@ -11,7 +11,7 @@
 <h2>1. Hello, and the tools</h2>
 <p>Every Go program starts as a <code>main</code> function in a <code>main</code> package. This one prints a line, which makes it the smallest complete program you can run.</p>
 <!-- include: primer/hello/main.go -->
-<p>A program starts in <code>func main()</code> of <code>package main</code>. <code>import</code> lists the packages you use; <code>fmt</code> is the standard library's formatting package. A name from another package is written <code>package.Name</code>, and only names that start with a capital letter are visible outside their package. That one rule is all Go has in place of <code>public</code> and <code>private</code>.</p>
+<p>A program starts in <code>func main()</code> of <code>package main</code>. <code>import</code> lists the packages you use, one per line in a parenthesised list or alone as <code>import "fmt"</code>; <code>fmt</code> is the standard library's formatting package. Imports go right under the <code>package</code> line, and Go refuses to compile a file with an import it does not use, so add each one when you need it. A name from another package is written <code>package.Name</code>, and only names that start with a capital letter are visible outside their package. That one rule is all Go has in place of <code>public</code> and <code>private</code>.</p>
 <!-- transcript: primer/hello -->
 <p><code>go run .</code> compiles and runs the package in the current directory. Go is a compiled language, so <code>go build</code> produces a single executable with no dependencies, which is much of why it is popular for services. Three other commands you will use constantly:</p>
 <ul>
@@ -54,7 +54,7 @@
 <details class="exercise">
   <summary>Your turn: parse a probability</summary>
   <div class="ex-body">
-    <p>In <code>primer/ex2/probability.go</code>, write <code>ParseProbability(s string) (float64, error)</code>: parse the text with <code>strconv.ParseFloat</code>, and reject anything that is not a number from 0 to 1. Chapter 1's command line will use this idea for its flags.</p>
+    <p>In <code>primer/ex2/probability.go</code>, write <code>ParseProbability(s string) (float64, error)</code>: parse the text with <code>strconv.ParseFloat</code> (from the standard library's <code>strconv</code> package, so the file needs an <code>import "strconv"</code> line under <code>package ex2</code>), and reject anything that is not a number from 0 to 1. To build an error message with values in it, <code>fmt.Errorf</code> works like <code>Printf</code> and returns an <code>error</code>; that needs <code>fmt</code> imported too. Chapter 1's command line will use this idea for its flags.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: primer/ex2/reference/probability.go#ParseProbability -->
     <p>The range check is written as <code>!(p &gt;= 0 &amp;&amp; p &lt;= 1)</code> instead of <code>p &lt; 0 || p &gt; 1</code> because <code>NaN</code> ("not a number", which <code>ParseFloat</code> accepts) is neither less than nor greater than anything, so the second form would let it through.</p>
