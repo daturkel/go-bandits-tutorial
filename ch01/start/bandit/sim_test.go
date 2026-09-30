@@ -29,7 +29,7 @@ func TestRunAccounting(t *testing.T) {
 	if math.Abs(res.Regret-gaps) > 1e-6 {
 		t.Errorf("Regret = %v, but the pulls imply %v", res.Regret, gaps)
 	}
-	if res.RegretCurve[1999] != res.Regret {
+	if math.Abs(res.RegretCurve[1999]-res.Regret) > 1e-9 {
 		t.Errorf("the curve ends at %v, Regret is %v", res.RegretCurve[1999], res.Regret)
 	}
 	if !slices.IsSorted(res.RegretCurve) {

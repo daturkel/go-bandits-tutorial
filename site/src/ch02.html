@@ -78,7 +78,7 @@
   <summary>Task 2: <code>UCB1.Select</code></summary>
   <div class="ex-body">
 <!-- include: ch02/start/bandit/ucb1.go#UCB1.Select -->
-    <p>Write it as the comment says. You will need <code>math.Sqrt</code> and <code>math.Log</code>, so add <code>import "math"</code>. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
+    <p>Write it as the comment says. The tests set <code>counts</code>, <code>means</code> and <code>total</code> directly and then call <code>Select</code>, so it must read exactly those and change nothing. You will need <code>math.Sqrt</code> and <code>math.Log</code>, so add <code>import "math"</code>. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Two loops: the first returns the first arm with a zero count; the second keeps the best score so far (start it at <code>math.Inf(-1)</code>, negative infinity) and the index that produced it. <code>range p.counts</code> gives you <code>arm, n</code> for each arm.</p>
     </details>

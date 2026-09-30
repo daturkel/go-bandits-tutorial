@@ -142,7 +142,7 @@
   <summary>Task 5: <code>Update</code>, the running mean</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.Update -->
-    <p>After a reward arrives, the arm's average must include it, without storing every reward. The primer's <code>RunningMean</code> exercise used this update rule: after <em>n</em> observations, <em>mean += (reward − mean) / n</em>. Run <code>go test -run Update ./bandit</code>.</p>
+    <p>After a reward arrives, the arm's average must include it, without storing every reward. The primer's <code>RunningMean</code> exercise used this update rule: after <em>n</em> observations, <em>mean += (reward − mean) / n</em>. The tests read <code>counts[arm]</code> and <code>values[arm]</code> directly, so that is where the count and the mean must end up. Run <code>go test -run Update ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Increment the arm's count first, then use the new count as <em>n</em>. Convert it with <code>float64(...)</code> before dividing.</p>
     </details>
@@ -157,7 +157,7 @@
   <summary>Task 6: <code>greedy</code>, and ties</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
-    <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random. The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. Run <code>go test -run Greedy ./bandit</code>.</p>
+    <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random. The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. The tests set <code>p.values</code> directly and then call <code>greedy</code>, so decide from <code>p.values</code> alone. Run <code>go test -run Greedy ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Walk the means, keeping the best index so far and how many arms have tied with it. When you meet an equal value, that makes one more tied arm, and the new arm should replace the current pick with probability 1 out of the number of ties so far, so every tied arm ends up equally likely. <code>p.rng.IntN(ties) == 0</code> is that coin. A better value resets the tie count to 1. A <code>switch</code> with conditions and no value reads well here.</p>
     </details>

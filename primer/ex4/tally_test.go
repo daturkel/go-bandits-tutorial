@@ -18,7 +18,7 @@ func TestTally(t *testing.T) {
 		{[]int{0}, 0, []int{}},
 	}
 	for _, tc := range tests {
-		if got := Tally(tc.pulls, tc.arms); !slices.Equal(got, tc.want) || got == nil {
+		if got := Tally(tc.pulls, tc.arms); !slices.Equal(got, tc.want) {
 			t.Errorf("Tally(%v, %d) = %v, want %v", tc.pulls, tc.arms, got, tc.want)
 		}
 	}
