@@ -6,7 +6,7 @@
 <h2>Setup</h2>
 <p>Install Go from <a href="https://go.dev/dl/">go.dev/dl</a>. This course was written against Go 1.27, and the <code>go.mod</code> files pin the toolchain, so any Go 1.21 or later will download the right version by itself. Check that it works:</p>
 <!-- transcript: primer/version -->
-<p>Then clone the repository. The tasks are in <code>exercises/primer</code>, the examples in <code>primer</code>. Go programs are built from <strong>modules</strong> (a directory with a <code>go.mod</code> file) that hold <strong>packages</strong> (one directory each, all files declaring the same <code>package</code> name). The examples here are a module called <code>primer</code>; each subdirectory is a small program.</p>
+<p>Then clone the repository. The examples and the tasks are both in <code>primer</code>: each example is a directory, and the tasks are <code>ex1</code> to <code>ex5</code>. Go programs are built from <strong>modules</strong> (a directory with a <code>go.mod</code> file) that hold <strong>packages</strong> (one directory each, all files declaring the same <code>package</code> name). The examples here are a module called <code>primer</code>; each subdirectory is a small program.</p>
 
 <h2>1. Hello, and the tools</h2>
 <!-- include: primer/hello/main.go -->
@@ -31,9 +31,9 @@
 <details class="exercise">
   <summary>Your turn: a percentage</summary>
   <div class="ex-body">
-    <p>In <code>exercises/primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. Convert to floating point before you divide, and return 0 when <code>total</code> is 0. Run <code>go test</code> in that directory.</p>
+    <p>In <code>primer/ex1/percent.go</code>, write <code>Percent(hits, total int) float64</code>. Convert to floating point before you divide, and return 0 when <code>total</code> is 0. Run <code>go test</code> in that directory.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: exercises/primer/ex1/reference/percent.go#Percent -->
+<!-- include: primer/ex1/reference/percent.go#Percent -->
     <p>Dividing two integers first would truncate: <code>1/4</code> is 0, and 0 times 100 is still 0. Converting first keeps the fraction.</p>
     </details>
   </div>
@@ -50,9 +50,9 @@
 <details class="exercise">
   <summary>Your turn: parse a probability</summary>
   <div class="ex-body">
-    <p>In <code>exercises/primer/ex2/probability.go</code>, write <code>ParseProbability(s string) (float64, error)</code>: parse the text with <code>strconv.ParseFloat</code>, and reject anything that is not a number from 0 to 1. Chapter 1's command line will use this idea for its flags.</p>
+    <p>In <code>primer/ex2/probability.go</code>, write <code>ParseProbability(s string) (float64, error)</code>: parse the text with <code>strconv.ParseFloat</code>, and reject anything that is not a number from 0 to 1. Chapter 1's command line will use this idea for its flags.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: exercises/primer/ex2/reference/probability.go#ParseProbability -->
+<!-- include: primer/ex2/reference/probability.go#ParseProbability -->
     <p>The range check is written as <code>!(p &gt;= 0 &amp;&amp; p &lt;= 1)</code> instead of <code>p &lt; 0 || p &gt; 1</code> because <code>NaN</code> ("not a number", which <code>ParseFloat</code> accepts) is neither less than nor greater than anything, so the second form would let it through.</p>
     </details>
   </div>
@@ -65,9 +65,9 @@
 <details class="exercise">
   <summary>Your turn: the longest winning streak</summary>
   <div class="ex-body">
-    <p>In <code>exercises/primer/ex3/streak.go</code>, write <code>LongestStreak(rewards []int) int</code>: the longest run of consecutive 1s. You need a loop, an <code>if</code>, and two counters.</p>
+    <p>In <code>primer/ex3/streak.go</code>, write <code>LongestStreak(rewards []int) int</code>: the longest run of consecutive 1s. You need a loop, an <code>if</code>, and two counters.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: exercises/primer/ex3/reference/streak.go#LongestStreak -->
+<!-- include: primer/ex3/reference/streak.go#LongestStreak -->
     <p><code>current</code> counts the run in progress and resets on a 0; <code>best</code> remembers the largest it ever reached. <code>max</code> is a built-in function (since Go 1.21).</p>
     </details>
   </div>
@@ -81,9 +81,9 @@
 <details class="exercise">
   <summary>Your turn: count the pulls</summary>
   <div class="ex-body">
-    <p>In <code>exercises/primer/ex4/tally.go</code>, write <code>Tally(pulls []int, arms int) []int</code>: for a list of arm numbers, return how many times each arm appears. Ignore numbers that are not valid arms.</p>
+    <p>In <code>primer/ex4/tally.go</code>, write <code>Tally(pulls []int, arms int) []int</code>: for a list of arm numbers, return how many times each arm appears. Ignore numbers that are not valid arms.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: exercises/primer/ex4/reference/tally.go#Tally -->
+<!-- include: primer/ex4/reference/tally.go#Tally -->
     <p>The result slice has to exist before you index into it, which is what <code>make</code> is for. The bounds check matters: indexing outside a slice is a runtime panic, not a silent zero.</p>
     </details>
   </div>
@@ -97,9 +97,9 @@
 <details class="exercise">
   <summary>Your turn: a running mean</summary>
   <div class="ex-body">
-    <p>In <code>exercises/primer/ex5/mean.go</code>, fill in the type <code>RunningMean</code> and its three methods. Its zero value must work without a constructor. This is the same update rule the bandit policy uses in chapter 1, so it is worth doing now.</p>
+    <p>In <code>primer/ex5/mean.go</code>, fill in the type <code>RunningMean</code> and its three methods. Its zero value must work without a constructor. This is the same update rule the bandit policy uses in chapter 1, so it is worth doing now.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: exercises/primer/ex5/reference/mean.go#RunningMean,RunningMean.Add,RunningMean.Mean,RunningMean.N -->
+<!-- include: primer/ex5/reference/mean.go#RunningMean,RunningMean.Add,RunningMean.Mean,RunningMean.N -->
     <p>Both fields start at 0, and the first <code>Add</code> computes <code>0 + (x - 0) / 1</code>, which is <code>x</code>. Designing the type so the zero value is valid is a habit worth forming: callers get one less thing to remember.</p>
     </details>
   </div>

@@ -15,7 +15,7 @@ Each chapter page explains what it builds and why, introduces language features 
 
 ## Following along
 
-Start with the **primer** (`site/primer.html`): a short tour of the Go you need, with runnable examples in `primer/` and small tasks in `exercises/primer`. Then work through the chapters in order.
+Start with the **primer** (`site/primer.html`): a short tour of the Go you need, with runnable examples in `primer/` and small tasks (`ex1` to `ex5`) next to them. Then work through the chapters in order.
 
 **The new format (primer, chapters 1 and 2).** Each chapter comes with a starter project in `starters/chNN`: the previous chapter's finished project with the interesting parts removed. The page explains the tasks in order, marked `TASK n` in the code, and the tests fail until you write them. Tasks have a hint and an answer behind a click. The starter also contains code you do not write; the page shows and explains it.
 

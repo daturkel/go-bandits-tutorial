@@ -8,14 +8,18 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 status=0
 chapters=("$@")
 if [ ${#chapters[@]} -eq 0 ]; then
-  for d in "$ROOT"/exercises/ch* "$ROOT"/exercises/capstone "$ROOT"/exercises/primer; do chapters+=("$(basename "$d")"); done
+  for d in "$ROOT"/exercises/ch* "$ROOT"/exercises/capstone; do chapters+=("$(basename "$d")"); done
+  chapters+=(primer)
 fi
 for ch in "${chapters[@]}"; do
-  for ex in "$ROOT/exercises/$ch"/ex*/; do
+  # The primer's tasks live next to its examples, in primer/exN; the others in exercises/<chapter>/exN.
+  base="$ROOT/exercises/$ch"
+  [ "$ch" = primer ] && base="$ROOT/primer"
+  for ex in "$base"/ex*/; do
     name="$ch/$(basename "$ex")"
     tmp=$(mktemp -d)
-    cp "$ROOT/exercises/$ch/go.mod" "$tmp/"
-    [ -f "$ROOT/exercises/$ch/go.sum" ] && cp "$ROOT/exercises/$ch/go.sum" "$tmp/"
+    cp "$base/go.mod" "$tmp/"
+    [ -f "$base/go.sum" ] && cp "$base/go.sum" "$tmp/"
     mkdir "$tmp/ex"
     find "$ex" -maxdepth 1 -type f -exec cp {} "$tmp/ex/" \;
     # starter must fail with a test failure, not a build error
