@@ -29,13 +29,13 @@
   <summary>Task 1: make <code>Argmax</code> generic</summary>
   <div class="ex-body">
 <!-- include: ch04/start/bandit/argmax.go#Argmax -->
-    <p>Reading a generic signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <code>cmp.Ordered</code> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits.</p>
+    <p>Reading a generic signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <a href="https://pkg.go.dev/cmp#Ordered"><code>cmp.Ordered</code></a> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits.</p>
     <p>Write it as the comment says. The tests call it with floats, ints and strings, so until this compiles no test in the <code>bandit</code> package can run. That is expected: everything else waits on this task. Run <code>go test -run Argmax ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the signature</summary>
     <p><code>func Argmax[T cmp.Ordered](xs []T, rng *rand.Rand) int</code>, and add <code>"cmp"</code> to the imports.</p>
     </details>
     <details class="answer"><summary>Hint 2: the loop</summary>
-    <p>Panic on an empty slice. Keep <code>best</code> (an index) and <code>ties</code> (how many elements are tied with it). For each later element, <code>cmp.Compare(xs[i], xs[best])</code> returns a negative, zero or positive number. Greater: new best, <code>ties = 1</code>. Equal, and <code>rng != nil</code>: increment <code>ties</code>, and replace <code>best</code> with probability <code>1/ties</code>, which is <code>rng.IntN(ties) == 0</code>. That picks uniformly among the tied elements without remembering them.</p>
+    <p>Start with <code>if len(xs) == 0 { panic("bandit.Argmax: empty slice") }</code>. The built-in <code>panic(v)</code> stops the program with a message and a stack trace; it is for programmer mistakes, such as asking for the largest element of nothing, rather than for errors a caller should handle. Then keep <code>best</code> (an index) and <code>ties</code> (how many elements are tied with it). For each later element, <a href="https://pkg.go.dev/cmp#Compare"><code>cmp.Compare(x, y T) int</code></a> returns a negative number if <code>x &lt; y</code>, zero if they are equal and a positive number if <code>x &gt; y</code>: here <code>cmp.Compare(xs[i], xs[best])</code>. Greater: new best, <code>ties = 1</code>. Equal, and <code>rng != nil</code>: increment <code>ties</code>, and replace <code>best</code> with probability <code>1/ties</code>, which is <code>rng.IntN(ties) == 0</code>. That picks uniformly among the tied elements without remembering them.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/bandit/argmax.go#Argmax -->
@@ -67,7 +67,7 @@
 <!-- include: ch04/start/bandit/thompson.go#Thompson.Select,Thompson.Update -->
     <p>Follow the comments. <code>alpha</code> and <code>beta</code> start at 1 (the uniform prior) for every arm, so a success adds to <code>alpha</code> and a failure adds to <code>beta</code>. The reward is a <code>float64</code> that is 0 or 1, so a single expression does both: what gets added to each? The tests check behaviour, not the fields: an untrained policy tries every arm about equally, and after fifty wins on one arm and fifty losses on the others it picks the winner almost every time. Run <code>go test -run Thompson ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
-    <p><code>Select</code> is one loop that fills <code>p.samples[arm]</code> with <code>SampleBeta(p.alpha[arm], p.beta[arm], p.rng)</code>, and one line that returns <code>Argmax(p.samples, p.rng)</code>. <code>Update</code> adds <code>reward</code> to one counter and <code>1 - reward</code> to the other.</p>
+    <p><code>Select</code> is one loop, <code>for arm := range p.samples</code> (with one variable, <code>range</code> gives just the index), that fills <code>p.samples[arm]</code> with <code>SampleBeta(p.alpha[arm], p.beta[arm], p.rng)</code>, and one line that returns <code>Argmax(p.samples, p.rng)</code>. <code>Update</code> adds <code>reward</code> to one counter and <code>1 - reward</code> to the other.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/bandit/thompson.go#Thompson.Select,Thompson.Update -->
@@ -100,7 +100,7 @@
   <summary>Task 4: <code>stat.Number</code> and <code>stat.Mean</code></summary>
   <div class="ex-body">
 <!-- include: ch04/start/stat/stat.go#Number,Mean -->
-    <p>A constraint can be a <strong>type set</strong>: a union of types written with <code>|</code>. The <code>~</code> in front of a type means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Widen <code>Number</code> to <code>~int | ~int64 | ~float32 | ~float64</code>, then write <code>Mean</code>. The tests call it with ints and a named float type, so they do not compile until <code>Number</code> is widened. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation you need, and it is legal because every member of the union is numeric.</p>
+    <p>A constraint can be a <strong>type set</strong>: a union of types written with <code>|</code>. The <code>~</code> in front of a type means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Widen <code>Number</code> to <code>~int | ~int64 | ~float32 | ~float64</code>, then write <code>Mean</code>; for an empty slice it returns not-a-number, which <a href="https://pkg.go.dev/math#NaN"><code>math.NaN() float64</code></a> produces. The tests call it with ints and a named float type, so they do not compile until <code>Number</code> is widened. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation you need, and it is legal because every member of the union is numeric.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/stat/stat.go#Number,Mean -->
     <p>The constraint guarantees at compile time that the body is valid for every type the function may be called with. <code>Sample[T any]</code>, below, is the opposite extreme: no operations on the elements at all, only copying, so its constraint is <code>any</code>.</p>
@@ -129,7 +129,7 @@
 <!-- include: ch04/start/harness/harness.go#Compare -->
     <p>Follow the comment. The tests check the shapes (one curve per policy, <code>Steps</code> values in each mean, <code>Seeds</code> values in <code>Final</code>), that regret never decreases, that two runs with the same spec give identical numbers, and that bad input is an error. Run <code>go test ./harness</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
-    <p>An outer loop over <code>spec.Policies</code> and an inner loop over seeds, <code>for i := range spec.Seeds</code>. The inner loop builds a <code>[][]float64</code> of regret curves; after it, one call to <code>summarise</code> turns those into a <code>Curve</code>, which you append to <code>rep.Curves</code>.</p>
+    <p>An outer loop over <code>spec.Policies</code> and an inner loop over seeds, <code>for i := range spec.Seeds</code>. The inner loop builds a <code>[][]float64</code> (a slice of slices, one regret curve per seed): declare it with <code>var runs [][]float64</code> and add to it with <code>runs = append(runs, res.RegretCurve)</code>; after it, one call to <code>summarise</code> turns those into a <code>Curve</code>, which you append to <code>rep.Curves</code>.</p>
     </details>
     <details class="answer"><summary>Hint 2: the details</summary>
     <p>The seed is <code>spec.BaseSeed + uint64(i)</code>. <code>runOnce</code> returns a <code>bandit.Result</code>, whose <code>Policy</code> field is the human-readable name to pass to <code>summarise</code> (it is the same for every seed, so keep the last one). Wrap failures with <code>fmt.Errorf("policy %q, seed %d: %w", policySpec, seed, err)</code>.</p>
@@ -199,7 +199,7 @@
   <summary>Extra 1: <code>SumBy</code> and <code>MaxBy</code></summary>
   <div class="ex-body">
 <!-- include: ch04/start/stat/extras.go#SumBy,MaxBy -->
-    <p>Total of a projection (say, total reward across a slice of result structs) and the element with the largest key. Notice that callers never write the type arguments.</p>
+    <p>Total of a projection (say, total reward across a slice of result structs) and the element with the largest key. Notice that callers never write the type arguments. The second parameter, <code>f func(T) N</code>, is a function: call it as <code>f(x)</code>. To return "nothing" for any type <code>T</code>, declare <code>var zero T</code>, which holds that type's zero value.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/stat/extras.go#SumBy,MaxBy -->
     <p>Two type parameters is normal when a function relates two types. <code>var sum N</code> is the generic way to say "zero of whatever this is": no literal <code>0</code> would compile for every <code>N</code>. <code>MaxBy</code> returns <code>(T, bool)</code> rather than a special value, the comma-ok idiom from chapter 1 applied to a generic type.</p>
@@ -211,7 +211,7 @@
   <summary>Extra 2: quantiles for a percentile band</summary>
   <div class="ex-body">
 <!-- include: ch04/start/stat/extras.go#Quantile -->
-    <p>A ±1 standard-error band assumes the regret is roughly bell-shaped across seeds; the spread in the ε = 0.01 results suggests it is not. Implement <code>Quantile</code> as its comment describes. As an open-ended follow-up with no test, add a <code>-band percentile</code> flag to <code>compare</code> that draws the 10th to 90th percentile instead.</p>
+    <p>A ±1 standard-error band assumes the regret is roughly bell-shaped across seeds; the spread in the ε = 0.01 results suggests it is not. Implement <code>Quantile</code> as its comment describes. Three library functions help: <a href="https://pkg.go.dev/slices#Sort"><code>slices.Sort(x S)</code></a> sorts a slice in place (so sort a copy; <code>slices.Clone</code> from chapter 1 makes one), and <a href="https://pkg.go.dev/math#Floor"><code>math.Floor(x float64) float64</code></a> and <a href="https://pkg.go.dev/math#Ceil"><code>math.Ceil(x float64) float64</code></a> round down and up, returning a <code>float64</code> you convert back with <code>int(...)</code> to use as an index. As an open-ended follow-up with no test, add a <code>-band percentile</code> flag to <code>compare</code> that draws the 10th to 90th percentile instead.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/stat/extras.go#Quantile -->
     <p><code>slices.Clone</code> before <code>slices.Sort</code> protects the caller's slice, since sorting is in place. <code>!(q &gt;= 0 &amp;&amp; q &lt;= 1)</code> handles NaN for the same reason as chapter 3's probability check.</p>
@@ -223,7 +223,7 @@
   <summary>Extra 3: a generic type with a useful zero value</summary>
   <div class="ex-body">
 <!-- include: ch04/start/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
-    <p><code>Counter[K comparable]</code> counts occurrences of keys (arms, policy names, anything comparable). Implement the three methods so that <code>var c Counter[string]</code> is usable immediately, with no constructor.</p>
+    <p><code>Counter[K comparable]</code> counts occurrences of keys (arms, policy names, anything comparable). Implement the three methods so that <code>var c Counter[string]</code> is usable immediately, with no constructor. The struct's map starts out <code>nil</code>: reading from a nil map is fine, but writing to one panics, so <code>Inc</code> must create it with <code>make(map[K]int)</code> the first time.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
     <p>Generic <em>types</em> take type parameters on the type, and its methods repeat them in the receiver, <code>(c *Counter[K])</code>. The zero-value trick relies on two facts about maps: reading from a nil map is fine, and only writing panics, so <code>Inc</code> creates the map lazily. It is the pattern behind <code>sync.Mutex</code> and <code>bytes.Buffer</code>, both usable as declared. <code>comparable</code> is required because map keys must support <code>==</code>.</p>

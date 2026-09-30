@@ -90,12 +90,18 @@ func build(root string) error {
 		return err
 	}
 	b := &builder{root: root, chapters: chapters}
+	std := newStdChecker(b)
 	var coverageErrs []error
 
 	render := func(name string, pd pageData, outName string) error {
 		src, err := os.ReadFile(filepath.Join(root, "site", "src", name))
 		if err != nil {
 			return err
+		}
+		if pd.Chapter != nil && (pd.Chapter.ID == "primer" || pd.Chapter.Starter) {
+			if err := std.check(name, string(src)); err != nil {
+				coverageErrs = append(coverageErrs, err)
+			}
 		}
 		b.shown = nil
 		b.moves = nil

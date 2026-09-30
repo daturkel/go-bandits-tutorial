@@ -78,7 +78,7 @@
   <summary>Task 2: <code>UCB1.Select</code></summary>
   <div class="ex-body">
 <!-- include: ch02/start/bandit/ucb1.go#UCB1.Select -->
-    <p>Write it as the comment says. The tests set <code>counts</code>, <code>means</code> and <code>total</code> directly and then call <code>Select</code>, so it must read exactly those and change nothing. You will need <code>math.Sqrt</code> and <code>math.Log</code>, so add <code>import "math"</code>. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
+    <p>Write it as the comment says. The tests set <code>counts</code>, <code>means</code> and <code>total</code> directly and then call <code>Select</code>, so it must read exactly those and change nothing. You will need three functions from the <a href="https://pkg.go.dev/math">math</a> package, so add <code>import "math"</code>: <a href="https://pkg.go.dev/math#Sqrt"><code>math.Sqrt(x float64) float64</code></a> (square root), <a href="https://pkg.go.dev/math#Log"><code>math.Log(x float64) float64</code></a> (natural logarithm) and <a href="https://pkg.go.dev/math#Inf"><code>math.Inf(sign int) float64</code></a>, which returns positive infinity for a positive <code>sign</code> and negative infinity for a negative one (<code>math.Inf(-1)</code> is a starting value that any real score beats). All work on <code>float64</code>, so convert integer counts first. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>Two passes over the arms. The first handles arms that have never been pulled, since the formula divides by the count. The second picks the best score.</p>
     </details>
@@ -103,7 +103,7 @@
   <summary>Task 3: <code>NewPolicy</code></summary>
   <div class="ex-body">
 <!-- include: ch02/start/bandit/policy.go#NewPolicy -->
-    <p>A <code>switch</code> on <code>name</code>. The function returns the interface type, so callers get a <code>Policy</code> whichever branch ran. It also returns an <code>error</code>: return <code>nil</code> for it on success, and <code>fmt.Errorf("unknown policy %q", name)</code> for a name you do not know. Chapter 3 covers Go's error handling properly. Run the whole suite with <code>go test ./...</code>.</p>
+    <p>A <code>switch name { case "epsgreedy": ... case "ucb1": ... default: ... }</code> on <code>name</code>, each branch ending in a <code>return</code>. The constructors to call are <code>NewEpsilonGreedy(nArms, epsilon, rng)</code> and <code>NewUCB1(nArms)</code>; both return a pointer, which satisfies <code>Policy</code>. The function returns the interface type, so callers get a <code>Policy</code> whichever branch ran. It also returns an <code>error</code>: return <code>nil</code> for it on success, and <code>fmt.Errorf("unknown policy %q", name)</code> for a name you do not know (the <code>%q</code> verb prints a string in double quotes). Chapter 3 covers Go's error handling properly. Run the whole suite with <code>go test ./...</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>On failure, return a plain <code>nil</code> as the first value, not a typed nil such as <code>(*UCB1)(nil)</code>. The test checks this, and the answer explains why.</p>
     </details>
@@ -142,7 +142,7 @@
   <summary>Extra 1: a round-robin baseline</summary>
   <div class="ex-body">
 <!-- include: ch02/start/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
-    <p>Make <code>RoundRobin</code> a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Any learning policy should beat this baseline. The test has a compile-time assertion that <code>*RoundRobin</code> satisfies <code>Policy</code>; you should know why it is there.</p>
+    <p>Make <code>RoundRobin</code> a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Any learning policy should beat this baseline. Keep a counter of the next arm in the struct; the remainder operator <code>%</code> wraps it back to 0 (<code>5 % 3</code> is <code>2</code>, <code>3 % 3</code> is <code>0</code>). The test has a compile-time assertion that <code>*RoundRobin</code> satisfies <code>Policy</code>; you should know why it is there.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
     <p>The receiver is a pointer because <code>Select</code> advances <code>next</code>. The modulo keeps the cycle in range without a branch. It is not added to <code>NewPolicy</code>: the tests that loop over <code>PolicyNames()</code> expect policies that learn.</p>
@@ -154,7 +154,7 @@
   <summary>Extra 2: a logging wrapper via embedding</summary>
   <div class="ex-body">
 <!-- include: ch02/start/bandit/extras.go#Logged,NewLogged -->
-    <p><code>Logged</code> embeds a <code>Policy</code>, so it already has all three methods. Override <code>Select</code> and <code>Update</code> so they record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines in <code>Log</code> (arm, then reward printed with <code>%g</code>) and then call the embedded policy. <code>Name</code> needs no code.</p>
+    <p><code>Logged</code> embeds a <code>Policy</code>, so it already has all three methods. Override <code>Select</code> and <code>Update</code> so they record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines in <code>Log</code> (arm, then reward printed with <code>%g</code>) and then call the embedded policy. <code>Name</code> needs no code. To build the text, <a href="https://pkg.go.dev/fmt#Sprintf"><code>fmt.Sprintf(format string, a ...any) string</code></a> formats like <code>Printf</code> but returns the string instead of printing it: <code>%d</code> prints an integer and <code>%g</code> a float in its shortest form, so <code>fmt.Sprintf("update %d %g", 1, 1.0)</code> is <code>"update 1 1"</code>. The methods are declared like any others, with the pointer receiver <code>(l *Logged)</code>, and <code>l.Policy</code> is the embedded value.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/extras.go#Logged,NewLogged,Logged.Select,Logged.Update -->
     <p>Inside an overriding method you reach the embedded value by its type name, <code>l.Policy.Select()</code>. Without that qualifier the method would call itself forever. The wrapper still satisfies <code>Policy</code>, so <code>Run</code> accepts it with no change: this is how middleware is built in Go.</p>

@@ -49,7 +49,7 @@
   <summary>Task 1: <code>NewRNG</code></summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/rng.go#NewRNG -->
-    <p>Right now every caller gets the same numbers, because the function ignores its arguments. Build the generator from <code>seed</code> and <code>stream</code> as described above. Run <code>go test -run RNG ./bandit</code>.</p>
+    <p>Right now every caller gets the same numbers, because the function ignores its arguments. Build the generator from <code>seed</code> and <code>stream</code> as described above. Two functions from <a href="https://pkg.go.dev/math/rand/v2">math/rand/v2</a> do it: <a href="https://pkg.go.dev/math/rand/v2#NewPCG"><code>rand.NewPCG(seed1, seed2 uint64) *PCG</code></a> creates the source of random bits from two 64-bit seeds, and <a href="https://pkg.go.dev/math/rand/v2#New"><code>rand.New(src Source) *Rand</code></a> wraps a source in a <a href="https://pkg.go.dev/math/rand/v2#Rand"><code>rand.Rand</code></a>, the type that has the methods for drawing numbers. Run <code>go test -run RNG ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p><code>rand.NewPCG</code> takes two <code>uint64</code> values and <code>rand.New</code> wraps the result in a generator. You already have exactly two numbers.</p>
     </details>
@@ -72,7 +72,7 @@
     <p>Two fields are enough: the probabilities, a <code>[]float64</code>, and the generator, a <code>*rand.Rand</code>. <code>NumArms</code> is the length of the first, and <code>Prob</code> indexes it.</p>
     </details>
     <details class="answer"><summary>Hint 2: the copy</summary>
-    <p>A slice is a small header onto an array, so assigning one shares the elements. The <code>slices</code> package has a function that makes an independent copy; add <code>"slices"</code> to the imports and use it in the constructor.</p>
+    <p>A slice is a small header onto an array, so assigning one shares the elements. The standard library's <code>slices</code> package has <a href="https://pkg.go.dev/slices#Clone"><code>slices.Clone(s S) S</code></a>, which returns a copy of a slice with its own array (the <code>S</code> is a generic type parameter, which chapter 4 explains: read it as "a slice of anything"). Add <code>"slices"</code> to the imports and use it in the constructor.</p>
     </details>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
@@ -89,7 +89,7 @@
   <summary>Task 3: <code>Env.Pull</code></summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/env.go#Env.Pull -->
-    <p>Pulling an arm returns 1 with the arm's probability and 0 otherwise. Run <code>go test -run Pull ./bandit</code>. The tests check that rewards are only 0 or 1, that the long-run rate matches the probability, and that a seed gives the same sequence twice.</p>
+    <p>Pulling an arm returns 1 with the arm's probability and 0 otherwise. The generator gives you a random number with <a href="https://pkg.go.dev/math/rand/v2#Rand.Float64"><code>(*rand.Rand).Float64() float64</code></a>: uniform in [0, 1), so <code>e.rng.Float64()</code>. Run <code>go test -run Pull ./bandit</code>. The tests check that rewards are only 0 or 1, that the long-run rate matches the probability, and that a seed gives the same sequence twice.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Compare the random number with the probability. A draw that falls below <code>probs[arm]</code> happens with exactly that probability.</p>
     </details>
@@ -160,7 +160,7 @@
   <summary>Task 6: <code>greedy</code>, and ties</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
-    <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random. The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. The tests set <code>p.values</code> directly and then call <code>greedy</code>, so decide from <code>p.values</code> alone. Run <code>go test -run Greedy ./bandit</code>.</p>
+    <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random, using <a href="https://pkg.go.dev/math/rand/v2#Rand.IntN"><code>(*rand.Rand).IntN(n int) int</code></a>, which returns a random integer from 0 to n−1 (<code>p.rng.IntN(3)</code> is 0, 1 or 2). The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. The tests set <code>p.values</code> directly and then call <code>greedy</code>, so decide from <code>p.values</code> alone. Run <code>go test -run Greedy ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>One pass over <code>p.values</code>, remembering the best index so far. Start with arm 0 as the best. Then think about what should happen when two values are exactly equal.</p>
     </details>
@@ -181,7 +181,7 @@
   <summary>Task 7: <code>Select</code>, explore or exploit</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.Select -->
-    <p>With probability <code>Epsilon</code>, return a uniformly random arm (<code>p.rng.IntN(n)</code> returns 0 to n−1). Otherwise return the greedy arm. Run <code>go test -run Select ./bandit</code>.</p>
+    <p>With probability <code>Epsilon</code>, return a uniformly random arm; otherwise return the greedy arm. You have both tools already: <code>p.rng.Float64()</code> compared with <code>p.Epsilon</code> decides whether to explore (as <code>Pull</code> did with a probability), and <code>p.rng.IntN(n)</code> picks the arm. Run <code>go test -run Select ./bandit</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Select -->
     <p>The same generator makes both random choices. That is fine, because it belongs to the policy alone; it is why the environment has its own.</p>
@@ -261,7 +261,7 @@
   <summary>Extra 2: reading the regret curve (maps and comma-ok)</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/extras.go#RegretAt -->
-    <p>Given the per-step regret curve and a list of step counts (1-based, like the milestones <code>main</code> prints), return a map from each mark to its regret. If any mark is out of range, return <code>nil, false</code>.</p>
+    <p>Given the per-step regret curve and a list of step counts (1-based, like the milestones <code>main</code> prints), return a map from each mark to its regret. If any mark is out of range, return <code>nil, false</code>. Create the map with <code>make(map[int]float64)</code> (the primer used a map literal; <code>make</code> is the way to get an empty one), set entries with <code>m[key] = value</code>, and loop over the marks with <code>for _, mark := range marks</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/extras.go#RegretAt -->
     <p>The map is created with <code>make</code> and a size hint. Reading the mark <code>m</code> as a one-based index means subtracting one, which is the classic off-by-one; the test pins it down.</p>
@@ -273,7 +273,7 @@
   <summary>Extra 3: decaying epsilon</summary>
   <div class="ex-body">
 <!-- include: ch01/start/bandit/extras.go#DecayedEpsilon -->
-    <p>Fixed ε keeps wasting pulls long after the best arm is obvious. Write the function the comment describes: an exploration rate that halves every <code>halfLife</code> steps but never drops below <code>floor</code>. Then, as an extension with no provided test, make <code>EpsilonGreedy.Select</code> use it and compare regret on the <code>easy</code> scenario.</p>
+    <p>Fixed ε keeps wasting pulls long after the best arm is obvious. Write the function the comment describes: an exploration rate that halves every <code>halfLife</code> steps but never drops below <code>floor</code>. Two functions from the <a href="https://pkg.go.dev/math">math</a> package help: <a href="https://pkg.go.dev/math#Pow"><code>math.Pow(x, y float64) float64</code></a> is x<sup>y</sup>, and <a href="https://pkg.go.dev/math#Max"><code>math.Max(x, y float64) float64</code></a> is the larger of two numbers. Both take and return <code>float64</code>, so convert integers first. Then, as an extension with no provided test, make <code>EpsilonGreedy.Select</code> use it and compare regret on the <code>easy</code> scenario.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/extras.go#DecayedEpsilon -->
     <p><code>math.Pow</code> and <code>math.Max</code> operate on <code>float64</code> only, so the step count is converted explicitly: Go never converts between numeric types implicitly, even <code>int</code> to <code>float64</code>.</p>

@@ -31,8 +31,8 @@
   <div class="ex-body">
 <!-- include: ch03/bandit/errors.go lines=8-24 -->
 <!-- include: ch03/start/bandit/errors.go#ArmError.Error,ArmError.Unwrap -->
-    <p>There are two kinds of error here. <strong>Sentinels</strong> like <code>ErrNoArms</code> are package-level values made with <code>errors.New</code>; they answer "<em>what</em> went wrong?" and callers compare against them with <code>errors.Is</code>. <strong>Error types</strong> like <code>ArmError</code> carry data; they answer "<em>where</em>, or <em>with what</em>?" and callers extract them with <code>errors.As</code>.</p>
-    <p>Implement <code>Error</code> so the text reads <code>arm 3: at least one arm is required</code> (arm index, then the wrapped error's own message), and <code>Unwrap</code> so it returns the wrapped error. <code>Unwrap</code> is what links an outer error to the one inside it: it is why <code>errors.Is(err, ErrInvalidProbability)</code> can see through an <code>ArmError</code>. Run <code>go test -run ArmError ./bandit</code>.</p>
+    <p>There are two kinds of error here. <strong>Sentinels</strong> like <code>ErrNoArms</code> are package-level values made with <a href="https://pkg.go.dev/errors#New"><code>errors.New(text string) error</code></a>; they answer "<em>what</em> went wrong?" and callers compare against them with <code>errors.Is</code>. <strong>Error types</strong> like <code>ArmError</code> carry data; they answer "<em>where</em>, or <em>with what</em>?" and callers extract them with <code>errors.As</code>.</p>
+    <p>Implement <code>Error</code> so the text reads <code>arm 3: at least one arm is required</code> (arm index, then the wrapped error's own message). Build the text with <a href="https://pkg.go.dev/fmt#Sprintf"><code>fmt.Sprintf(format string, a ...any) string</code></a>, and add <code>"fmt"</code> to the imports. The format string has a verb for each argument, and the ones this chapter uses are <code>%d</code> (an integer), <code>%s</code> (a string), <code>%q</code> (a string in double quotes), <code>%v</code> (any value in its default form; an error prints as its message) and <code>%w</code> (for <code>fmt.Errorf</code> only: like <code>%v</code> for an error, but it also wraps it). Write <code>Unwrap</code> so it returns the wrapped error. <code>Unwrap</code> is what links an outer error to the one inside it: it is why <code>errors.Is(err, ErrInvalidProbability)</code> can see through an <code>ArmError</code>. Run <code>go test -run ArmError ./bandit</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/errors.go#ArmError.Error,ArmError.Unwrap -->
     <p>The receivers are pointers, so <code>*ArmError</code> is the error type: code creates and matches it as a pointer, <code>&amp;ArmError{...}</code>. The task's title asks for an <code>ArmError</code> that satisfies <code>error</code>; the compiler checks that wherever one is returned as an <code>error</code>.</p>
@@ -48,7 +48,7 @@
     <p>Reporting all problems at once is kinder than making the user fix them one at a time. Follow the comment. Three tools:</p>
     <ul>
       <li><code>fmt.Errorf("...: %w", err)</code> <strong>wraps</strong> an error: the message gains context and the original stays reachable through <code>Unwrap</code>. With <code>%v</code> you get the same text but the chain is cut, which is a bug whenever a caller needs the cause.</li>
-      <li><code>errors.Join(errs...)</code> combines several errors into one. <code>errors.Is</code> and <code>errors.As</code> search every branch of it.</li>
+      <li><a href="https://pkg.go.dev/errors#Join"><code>errors.Join(errs ...error) error</code></a> combines several errors into one; pass a slice with a trailing <code>...</code>, as in <code>errors.Join(errs...)</code>. <code>errors.Is</code> and <code>errors.As</code> search every branch of it.</li>
       <li>A test for "outside [0, 1]" that also has to reject NaN needs care: every comparison with NaN is false, so <code>p &lt; 0 || p &gt; 1</code> lets NaN through.</li>
     </ul>
     <details class="answer"><summary>Hint 1: the shape</summary>
@@ -69,7 +69,7 @@
   <summary>Task 3: <code>Scenario</code> names the culprit and the choices</summary>
   <div class="ex-body">
 <!-- include: ch03/start/bandit/scenarios.go#Scenario -->
-    <p>Chapter 2's version returned <code>(value, bool)</code>. An error can say much more: an unknown name should produce something like <code>unknown scenario "nope" (choose from close, easy, needle, spread)</code>, wrapping <code>ErrUnknownScenario</code> so callers can test for the category. Look up the name with the comma-ok form, <code>probs, ok := scenarios[name]</code>; <code>strings.Join</code> turns a slice into text.</p>
+    <p>Chapter 2's version returned <code>(value, bool)</code>. An error can say much more: an unknown name should produce something like <code>unknown scenario "nope" (choose from close, easy, needle, spread)</code>, wrapping <code>ErrUnknownScenario</code> so callers can test for the category. Look up the name with the comma-ok form, <code>probs, ok := scenarios[name]</code>; <a href="https://pkg.go.dev/strings#Join"><code>strings.Join(elems []string, sep string) string</code></a> turns a slice into text: <code>strings.Join([]string{"a", "b"}, ", ")</code> is <code>"a, b"</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/scenarios.go#Scenario -->
     <p>Cloning matters: a caller who edits the returned slice must not change the shared scenario. The chapter's tests check that.</p>
@@ -103,7 +103,7 @@
   <summary>Task 5: <code>NewPolicy</code> parses specs</summary>
   <div class="ex-body">
 <!-- include: ch03/start/bandit/policy.go#NewPolicy -->
-    <p>The comment lists the behaviour. <code>strings.Cut(spec, ":")</code> returns the text before and after the first colon and whether one was found. Tests check the sentinel with <code>errors.Is</code>, that the <code>strconv</code> error is still reachable inside a bad-number error, and that a failed constructor gives back a literal <code>nil</code> <code>Policy</code>.</p>
+    <p>The comment lists the behaviour. <a href="https://pkg.go.dev/strings#Cut"><code>strings.Cut(s, sep string) (before, after string, found bool)</code></a> splits at the first occurrence of <code>sep</code>: <code>strings.Cut("epsgreedy:0.05", ":")</code> gives <code>"epsgreedy"</code>, <code>"0.05"</code> and <code>true</code>, and with no colon <code>found</code> is false. Numbers come from <code>strconv.ParseFloat(arg, 64)</code> as in the primer. Tests check the sentinel with <code>errors.Is</code>, that the <code>strconv</code> error is still reachable inside a bad-number error, and that a failed constructor gives back a literal <code>nil</code> <code>Policy</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>Cut the spec into <code>name, arg, hasArg</code>, then <code>switch name</code>. In the <code>"epsgreedy"</code> case, start with <code>eps := defaultEpsilon</code> and override it if <code>hasArg</code>. In the <code>"ucb1"</code> case, <code>hasArg</code> is an error.</p>
     </details>
@@ -161,7 +161,8 @@ return p, nil</code></pre>
   <summary>Task 7: write the table test for <code>Scenario</code></summary>
   <div class="ex-body">
 <!-- include: ch03/start/bandit/scenarios_test.go -->
-    <p>Your first test from scratch. Cases go in a slice of an anonymous struct; use <code>errors.Is(err, tc.wantErr)</code>, which is true when both are <code>nil</code>, so one line handles success and failure. <code>slices.Equal</code> compares slices.</p>
+    <p>Your first test from scratch. Cases go in a slice of an anonymous struct; use <code>errors.Is(err, tc.wantErr)</code>, which is true when both are <code>nil</code>, so one line handles success and failure. The function you pass to <code>t.Run</code> is usually a <em>function literal</em>, an unnamed function written in place: <code>func(t *testing.T) { ... }</code>. It can use the variables around it, such as <code>tc</code> from the loop.</p>
+    <p>The pieces you will call, all documented: <a href="https://pkg.go.dev/testing#T"><code>*testing.T</code></a> is the argument every test receives; <a href="https://pkg.go.dev/testing#T.Run"><code>t.Run(name string, f func(t *testing.T)) bool</code></a> runs a subtest; <a href="https://pkg.go.dev/testing#T.Errorf"><code>t.Errorf(format string, args ...any)</code></a> reports a failure and continues, and <a href="https://pkg.go.dev/testing#T.Fatalf"><code>t.Fatalf</code></a> reports and stops this test; <a href="https://pkg.go.dev/errors#Is"><code>errors.Is(err, target error) bool</code></a> reports whether <code>err</code> is, or wraps, <code>target</code>; <a href="https://pkg.go.dev/slices#Equal"><code>slices.Equal(s1, s2 []E) bool</code></a> compares slices element by element; <a href="https://pkg.go.dev/strings#Contains"><code>strings.Contains(s, substr string) bool</code></a> reports whether one string is inside another.</p>
     <details class="answer"><summary>Hint: the skeleton</summary>
     <pre><code>tests := []struct {
     name      string
@@ -210,7 +211,7 @@ for _, tc := range tests {
   <summary>Task 8: benchmark one policy step</summary>
   <div class="ex-body">
 <!-- include: ch03/start/bandit/bench_test.go -->
-    <p>Write <code>BenchmarkSelectUpdate</code> as its comment describes. <code>b.Run</code> creates a sub-benchmark per policy and <code>b.ReportAllocs()</code> adds memory columns. Run only benchmarks with <code>go test -run '^$' -bench . -benchmem ./bandit</code> (<code>-run '^$'</code> selects no tests).</p>
+    <p>Write <code>BenchmarkSelectUpdate</code> as its comment describes. The pieces, from the <a href="https://pkg.go.dev/testing">testing</a> package: <a href="https://pkg.go.dev/testing#B"><code>*testing.B</code></a> is the argument every benchmark receives; <a href="https://pkg.go.dev/testing#B.Run"><code>b.Run(name string, f func(b *testing.B)) bool</code></a> creates a sub-benchmark per policy; <a href="https://pkg.go.dev/testing#B.ReportAllocs"><code>b.ReportAllocs()</code></a> adds memory columns; <a href="https://pkg.go.dev/testing#B.Loop"><code>b.Loop() bool</code></a> is the loop condition, and <a href="https://pkg.go.dev/testing#B.Fatal"><code>b.Fatal(args ...any)</code></a> stops with an error. Run only benchmarks with <code>go test -run '^$' -bench . -benchmem ./bandit</code> (<code>-run '^$'</code> selects no tests).</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/bench_test.go#BenchmarkSelectUpdate -->
     <p>The policy is built before <code>b.Loop</code>, so construction is not timed. The second benchmark, <code>BenchmarkRun</code>, was given and measures a whole 10,000-step simulation.</p>
@@ -245,7 +246,7 @@ for _, tc := range tests {
   <summary>Extra 1: parse a probability list, with useful errors</summary>
   <div class="ex-body">
 <!-- include: ch03/start/bandit/extras.go#ParseProbs -->
-    <p>The comment states the contract, including what the errors must wrap; the tests check exactly that. <code>strings.Split</code> and <code>strconv.ParseFloat</code> are the tools.</p>
+    <p>The comment states the contract, including what the errors must wrap; the tests check exactly that. Two functions split and clean the text: <a href="https://pkg.go.dev/strings#Split"><code>strings.Split(s, sep string) []string</code></a> and <a href="https://pkg.go.dev/strings#TrimSpace"><code>strings.TrimSpace(s string) string</code></a> (which removes leading and trailing white space, so <code>"0.2, 0.5"</code> parses). <code>strconv.ParseFloat(s, 64)</code> converts each piece, as in the primer.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/extras.go#ParseProbs -->
     <p>The important detail is <code>%w</code>, twice. With <code>%v</code> the messages would read the same and every test that inspects the cause would fail.</p>

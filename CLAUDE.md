@@ -13,6 +13,8 @@ Everything lives in this repo: the site, the per-chapter solution code, and the 
 5. **Write for the reader described above.** Pages never refer to how the project was produced. Do not open sections with "since you know Python". Short "Go vs. Python" callouts are welcome where the contrast teaches something, not on every page.
 6. Use current stable Go idioms: `math/rand/v2`, `log/slog`, generics, `net/http` ServeMux method+path patterns, range-over-int. Pin the toolchain in `go.mod`. Prefer the standard library until a dependency is clearly worth it (gRPC, protobuf, Prometheus client, a DB driver).
 
+7. **Tasks only use what the reader has been shown.** Before a task, the page must have introduced every language construct its reference answer needs (not only the library calls: `if`, `import`, `%` and function literals count) and show each standard library function it calls, with its signature and a link to its pkg.go.dev entry, the first time it comes up. Explain what non-obvious parameters mean (for example `ParseFloat`'s bit size). Extras may be skipped, so a later chapter cannot rely on something only an extra introduced. `tools/build_site` enforces the library half of this (see `stdlib.go`); the language half is a manual check against the answer, so do it for every task you write.
+
 ## Repo layout
 
 ```
