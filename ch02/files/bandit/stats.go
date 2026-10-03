@@ -1,3 +1,6 @@
+// This file comes with the course, and later chapters may replace it with a
+// new version. Keep your own code in other files.
+
 package bandit
 
 // armStats is the bookkeeping every policy needs: how often each arm was

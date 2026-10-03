@@ -3,8 +3,8 @@ goos: linux
 goarch: amd64
 pkg: banditlab/bandit
 cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
-BenchmarkSelectUpdate/epsgreedy-4         	16382533	        74.49 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSelectUpdate/ucb1-4              	10259458	       115.1 ns/op	       0 B/op	       0 allocs/op
-BenchmarkRun-4                            	    1113	   1034333 ns/op	   82336 B/op	      11 allocs/op
+BenchmarkSelectUpdate/epsgreedy-4         	16451948	        72.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSelectUpdate/ucb1-4              	11530500	       102.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRun-4                            	    1284	   1052759 ns/op	   82336 B/op	      11 allocs/op
 PASS
-ok  	banditlab/bandit	3.559s
+ok  	banditlab/bandit	3.735s

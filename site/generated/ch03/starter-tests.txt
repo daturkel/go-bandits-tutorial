@@ -1,11 +1,11 @@
 $ go test ./... 2>&1 | head -14
 # banditlab [banditlab.test]
-./main.go:39:12: invalid operation: err != nil (mismatched types bool and untyped nil)
-./main.go:53:15: assignment mismatch: 2 variables but bandit.NewEnv returns 1 value
-./main.go:57:53: not enough arguments in call to bandit.NewPolicy
+./main.go:42:12: invalid operation: err != nil (mismatched types bool and untyped nil)
+./main.go:56:15: assignment mismatch: 2 variables but bandit.NewEnv returns 1 value
+./main.go:60:53: not enough arguments in call to bandit.NewPolicy
 	have (string, unknown type, *"math/rand/v2".Rand)
 	want (string, int, float64, *"math/rand/v2".Rand)
-./main.go:67:15: assignment mismatch: 2 variables but bandit.Run returns 1 value
+./main.go:70:15: assignment mismatch: 2 variables but bandit.Run returns 1 value
 # banditlab/bandit [banditlab/bandit.test]
 bandit/bench_test.go:18:13: assignment mismatch: 2 variables but NewEnv returns 1 value
 bandit/bench_test.go:19:46: not enough arguments in call to NewPolicy

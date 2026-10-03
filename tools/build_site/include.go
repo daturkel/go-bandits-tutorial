@@ -620,6 +620,11 @@ func packageAndImportLines(src string) map[int]bool {
 	if f.Doc != nil {
 		mark(f.Doc.Pos(), f.Doc.End()) // the package doc comment
 	}
+	// The header that marks a file the course may replace (see check_chapters.sh)
+	// is a note to the reader, not code to show.
+	if len(f.Comments) > 0 && f.Comments[0] != f.Doc && strings.HasPrefix(f.Comments[0].Text(), "This file comes with the course") {
+		mark(f.Comments[0].Pos(), f.Comments[0].End())
+	}
 	mark(f.Package, f.Name.End())
 	for _, d := range f.Decls {
 		mark(d.Pos(), d.End())
