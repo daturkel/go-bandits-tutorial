@@ -1,0 +1,6 @@
+$ go test ./harness
+--- FAIL: TestCompareRunsInParallel (0.19s)
+    harness_test.go:197: Compare took 27.58256ms and CompareSequential 27.710763ms: the runs do not seem to overlap
+FAIL
+FAIL	banditlab/harness	0.206s
+FAIL

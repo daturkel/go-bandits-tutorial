@@ -1,4 +1,5 @@
 <h2>What you will build</h2>
+<p>Which strategy goes into production is a decision for an experiment review, and a single simulated run is an anecdote: change the seed and the ranking can flip. The review needs every policy compared over many seeds, with error bars, and a chart people can read.</p>
 <p>The third policy, Thompson sampling, and a <strong>comparison harness</strong> that runs every policy across many seeds and turns the results into a table, a CSV file, and the regret chart below. One seed can mislead; a hundred seeds with an error band show whether a difference is real, and the rest of the course relies on that.</p>
 <!-- svg: ch04/regret-needle.svg caption="Cumulative regret on the needle scenario (nine arms at 0.10, one at 0.30), mean of 100 seeds. The chart is drawn by the code in this chapter from the harness's output." -->
 <p>Generics arrive along the way, because Thompson sampling and the harness both have small pieces that are the same for several types. Just as important is where they do <em>not</em> help, and the chapter marks both.</p>

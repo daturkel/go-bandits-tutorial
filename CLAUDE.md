@@ -28,7 +28,7 @@ Changes to code the reader already owns are **tasks described in prose** ("chang
 
 `tools/check_chapters.sh` plays a reader through each converted chapter (previous solution + files: tests must fail; solution: gofmt, vet, `test -race` pass; given files and tests match the solution), enforces the ownership rules, and lists the files the reader edits by hand, which the page must cover with tasks.
 
-Chapters 5 to 14 and the capstone are still in the earlier format (listings to copy, `solutions/chNN`, separate `exercises/chNN`, `tools/check.sh`) and are to be converted.
+Chapters 8 to 14 and the capstone are still in the earlier format (listings to copy, `solutions/chNN`, separate `exercises/chNN`, `tools/check.sh`) and are to be converted.
 
 ## Repo layout
 

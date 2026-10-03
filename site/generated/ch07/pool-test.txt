@@ -16,4 +16,4 @@ $ go test -race -count=1 -v ./pool
 === RUN   TestRunAlreadyCancelled
 --- PASS: TestRunAlreadyCancelled (0.00s)
 PASS
-ok  	banditlab/pool	1.110s
+ok  	banditlab/pool	1.107s

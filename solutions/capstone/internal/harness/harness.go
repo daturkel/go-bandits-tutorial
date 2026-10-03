@@ -21,10 +21,6 @@ type Spec struct {
 	Seeds    int    // number of independent runs per policy
 	BaseSeed uint64 // run i uses seed BaseSeed+i
 
-	// Delay is how many selections are made before a reward reaches the
-	// policy (see bandit.RunDelayed). Zero means feedback is immediate.
-	Delay int
-
 	// Workers bounds how many runs execute at once. Zero means one per CPU
 	// core; 1 runs them one at a time.
 	Workers int
@@ -32,6 +28,10 @@ type Spec struct {
 	// OnProgress, if set, is called after each finished run with the number
 	// done so far and the total. Calls never overlap.
 	OnProgress func(done, total int)
+
+	// Delay is how many selections are made before a reward reaches the
+	// policy (see bandit.RunDelayed). Zero means feedback is immediate.
+	Delay int
 }
 
 // Curve is one policy's regret averaged over all seeds.
@@ -76,47 +76,24 @@ func Compare(ctx context.Context, spec Spec) (*Report, error) {
 		return nil, err
 	}
 
-	// Results come back in job order, so slot k belongs to jobs[k].
-	runs := newRuns(spec)
+	// Results come back in job order, so results[k] belongs to jobs[k].
+	runs := make([][][]float64, len(spec.Policies)) // runs[policy][seed]
 	names := make([]string, len(spec.Policies))
+	for p := range spec.Policies {
+		runs[p] = make([][]float64, spec.Seeds)
+	}
 	for k, j := range jobs {
 		runs[j.policy][j.seed] = results[k].RegretCurve
 		names[j.policy] = results[k].Policy
 	}
-	return buildReport(spec, names, runs), nil
-}
-
-func (s Spec) validate() error {
-	if s.Steps < 1 || s.Seeds < 1 {
-		return errors.New("harness: steps and seeds must be positive")
-	}
-	if s.Delay < 0 {
-		return errors.New("harness: delay must not be negative")
-	}
-	if len(s.Policies) == 0 {
-		return errors.New("harness: no policies to compare")
-	}
-	return nil
-}
-
-// newRuns allocates runs[policy][seed], to be filled with regret curves.
-func newRuns(spec Spec) [][][]float64 {
-	runs := make([][][]float64, len(spec.Policies))
-	for p := range runs {
-		runs[p] = make([][]float64, spec.Seeds)
-	}
-	return runs
-}
-
-func buildReport(spec Spec, names []string, runs [][][]float64) *Report {
 	rep := &Report{Spec: spec}
 	for p := range runs {
 		rep.Curves = append(rep.Curves, summarise(names[p], runs[p]))
 	}
-	return rep
+	return rep, nil
 }
 
-// runOnce simulates one policy on one seed. Errors say which run failed.
+// runOnce simulates one policy on one seed. Its errors say which run failed.
 func runOnce(ctx context.Context, spec Spec, policySpec string, seed uint64) (bandit.Result, error) {
 	fail := func(err error) (bandit.Result, error) {
 		return bandit.Result{}, fmt.Errorf("policy %q, seed %d: %w", policySpec, seed, err)
@@ -157,4 +134,18 @@ func summarise(name string, runs [][]float64) Curve {
 		c.Final[i] = run[steps-1]
 	}
 	return c
+}
+
+// validate rejects specs that cannot produce a report.
+func (s Spec) validate() error {
+	if s.Steps < 1 || s.Seeds < 1 {
+		return errors.New("harness: steps and seeds must be positive")
+	}
+	if len(s.Policies) == 0 {
+		return errors.New("harness: no policies to compare")
+	}
+	if s.Delay < 0 {
+		return errors.New("harness: delay must not be negative")
+	}
+	return nil
 }

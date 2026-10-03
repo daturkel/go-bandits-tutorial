@@ -47,6 +47,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <article class="prose">
 <h2 id="what-you-will-build">What you will build</h2>
+<p>Epsilon-greedy works, but it keeps exploring at the same rate forever, and every exploratory request is a user shown a version you already believe is worse. Before choosing a strategy for production, you want to try others on exactly the same simulated traffic, and that means a runner that does not care which strategy it drives.</p>
 <p>A <code>Policy</code> interface that lets the simulation run <em>any</em> selection strategy, and a second strategy, UCB1, that plugs into it without changing a line of the runner. Along the way you meet the three ideas that make Go code reusable without inheritance: interfaces, embedding, and the choice between value and pointer receivers.</p>
 <p>When you have finished, <code>go run .</code> compares two policies on identical conditions in one table:</p>
 <figure class="term"><figcaption><span class="fname">terminal</span></figcaption>

@@ -47,6 +47,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <article class="prose">
 <h2 id="what-you-will-build">What you will build</h2>
+<p>Which strategy goes into production is a decision for an experiment review, and a single simulated run is an anecdote: change the seed and the ranking can flip. The review needs every policy compared over many seeds, with error bars, and a chart people can read.</p>
 <p>The third policy, Thompson sampling, and a <strong>comparison harness</strong> that runs every policy across many seeds and turns the results into a table, a CSV file, and the regret chart below. One seed can mislead; a hundred seeds with an error band show whether a difference is real, and the rest of the course relies on that.</p>
 <figure class="chart"><svg data-embedded class="regret-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" role="img" aria-labelledby="ch04-regret-needle-svg-title ch04-regret-needle-svg-desc">
 <title id="ch04-regret-needle-svg-title">Cumulative regret on the &#34;needle&#34; scenario</title>

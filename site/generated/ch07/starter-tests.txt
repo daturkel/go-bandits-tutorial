@@ -1,0 +1,10 @@
+$ go build ./...
+# banditlab
+./compare.go:56:3: unknown field Workers in struct literal of type harness.Spec
+./compare.go:62:8: spec.OnProgress undefined (type harness.Spec has no field or method OnProgress)
+./compare.go:64:35: too many arguments in call to harness.Compare
+	have (context.Context, harness.Spec)
+	want (harness.Spec)
+./run.go:56:45: too many arguments in call to bandit.Run
+	have (context.Context, *bandit.Env, bandit.Policy, int)
+	want (*bandit.Env, bandit.Policy, int)

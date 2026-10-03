@@ -47,6 +47,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <article class="prose">
 <h2 id="what-you-will-build">What you will build</h2>
+<p>The setting for the whole course: your team serves a ranking model to users, and there are three versions of it. Instead of splitting traffic between them by hand for a month, you want a service that learns which version works best and sends more traffic to it as it learns. That is a <em>multi-armed bandit</em>: each version is an arm, each request is a pull, and a click is a reward. Before anything goes near production, you build the part that decides, and test it in simulation.</p>
 <p>A command-line program that simulates a multi-armed bandit and reports how much reward it left on the table. You start from a few files the course provides. The plumbing is written, and eight pieces are left for you, each with tests that fail until you write it. By the end you have a reproducible random-number source, an environment whose arms pay out with fixed probabilities, an epsilon-greedy policy that learns which arm is best, a simulation loop, and a program you can run with different settings.</p>
 <p>Everything later in the course builds on these types, so it is worth being precise about the problem first.</p>
 <p>When you have finished, <code>go run .</code> prints this:</p>

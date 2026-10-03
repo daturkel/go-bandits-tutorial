@@ -68,7 +68,8 @@ for ch in "${all[@]}"; do
     if [ ! -f "$work/$f" ]; then fail "$f is in the solution but the reader never gets or writes it (not in files/ or an earlier solution)"; continue; fi
     cmp -s "$work/$f" "$sol/$f" && continue
     if [ -f "$files/$f" ] && grep -q 'TASK [0-9E]' "$files/$f"; then continue; fi
-    case "$f" in *_test.go) fail "$f: the reader's copy differs from the solution's"; continue;; esac
+    # A test file the reader wrote in an earlier task is theirs to change too.
+    case "$f" in *_test.go) if [ -z "${owned[$f]:-}" ]; then fail "$f: the reader's copy differs from the solution's"; continue; fi;; esac
     grep -q "$courseHeader" "$work/$f" && fail "the reader edits $f, but its header says the course may replace it"
     edited+=("$f"); owned[$f]=${owned[$f]:-$ch}
   done < <(cd "$sol" && find . -type f | sed 's|^\./||' | sort)

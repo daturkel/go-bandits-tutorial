@@ -1,0 +1,11 @@
+$ cp -R ../../ch06/files/. .
+$ git status --short
+?? _examples/copylock/
+?? _examples/lostupdate/
+?? _examples/race/
+?? _extras/ch06/
+?? bandit/locked.go
+?? bandit/locked_bench_test.go
+?? bandit/locked_test.go
+?? bandit/snapshot.go
+?? bandit/snapshot_test.go

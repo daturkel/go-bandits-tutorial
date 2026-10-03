@@ -2,10 +2,10 @@ $ gofmt -l .
 $ go vet ./...
 $ go build ./...
 $ go test -race -count=1 ./...
-ok  	banditlab	1.068s
-ok  	banditlab/bandit	1.347s
-ok  	banditlab/harness	1.125s
-ok  	banditlab/stat	1.013s
+ok  	banditlab	1.040s
+ok  	banditlab/bandit	1.288s
+ok  	banditlab/harness	1.864s
+ok  	banditlab/stat	1.017s
 $ go run . run -seed 7 -steps 1000
 scenario=easy arms=[0.2 0.5 0.8] steps=1000 seed=7
 

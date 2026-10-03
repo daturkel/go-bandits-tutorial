@@ -1,0 +1,7 @@
+$ cp -R ../../ch05/files/. .
+$ git status --short
+ M compare.go
+ M harness/harness_test.go
+?? _examples/chanbasics/
+?? _examples/deadlock/
+?? _extras/ch05/

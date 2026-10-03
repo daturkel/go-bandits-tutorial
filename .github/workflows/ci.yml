@@ -30,9 +30,9 @@ jobs:
           - ch02/solution
           - ch03/solution
           - ch04/solution
-          - solutions/ch05
-          - solutions/ch06
-          - solutions/ch07
+          - ch05/solution
+          - ch06/solution
+          - ch07/solution
           - solutions/ch08
           - solutions/ch09
           - solutions/ch10

@@ -82,9 +82,17 @@ func TestRoundRobinSpreadsCalls(t *testing.T) {
 		}
 		return seen
 	}
-	// The first calls can all reach the replica that connected first, so
-	// count over enough calls that the split is clear.
-	if got := count("-addr", target, "-lb", "round_robin", "select", "40"); got["a"] < 12 || got["b"] < 12 {
+	// Connections are made in the background, and round_robin only picks
+	// replicas it is already connected to, so a burst of calls can finish
+	// before the second connection is ready. Count over enough calls that the
+	// split is clear, and give the client a few fresh starts.
+	var got map[string]int
+	for range 5 {
+		if got = count("-addr", target, "-lb", "round_robin", "select", "40"); got["a"] >= 12 && got["b"] >= 12 {
+			break
+		}
+	}
+	if got["a"] < 12 || got["b"] < 12 {
 		t.Errorf("round_robin: %v, want both replicas well used", got)
 	}
 	if got := count("-addr", target, "select", "40"); len(got) != 1 {

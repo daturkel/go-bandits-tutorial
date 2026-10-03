@@ -3,11 +3,11 @@ $ go test -race -count=1 -v -run "TestLockedConcurrentUse|TestLockedMatches" ./b
 === RUN   TestLockedConcurrentUse/epsgreedy
 === RUN   TestLockedConcurrentUse/ucb1
 === RUN   TestLockedConcurrentUse/thompson
---- PASS: TestLockedConcurrentUse (0.04s)
+--- PASS: TestLockedConcurrentUse (0.03s)
     --- PASS: TestLockedConcurrentUse/epsgreedy (0.01s)
     --- PASS: TestLockedConcurrentUse/ucb1 (0.01s)
-    --- PASS: TestLockedConcurrentUse/thompson (0.02s)
+    --- PASS: TestLockedConcurrentUse/thompson (0.01s)
 === RUN   TestLockedMatchesBarePolicy
 --- PASS: TestLockedMatchesBarePolicy (0.00s)
 PASS
-ok  	banditlab/bandit	1.062s
+ok  	banditlab/bandit	1.049s

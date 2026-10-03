@@ -22,6 +22,8 @@ CH03_PART_A='cp -R ../../ch03/files/. . &&
   sed -i "s|^func NewUCB1(nArms int) \*UCB1 {|func NewUCB1(nArms int) (*UCB1, error) {|; s|return &UCB1{armStats: newArmStats(nArms)}\$|return \&UCB1{armStats: newArmStats(nArms)}, nil|" bandit/ucb1.go &&
   sed -i "s|^\t\treturn NewEpsilonGreedy(nArms, epsilon, rng), nil|\t\tp, err := NewEpsilonGreedy(nArms, epsilon, rng)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn p, nil|; s|^\t\treturn NewUCB1(nArms), nil|\t\tp, err := NewUCB1(nArms)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn p, nil|" bandit/policy.go'
 
+# After chapter 5's task 1: CompareSequential exists and Compare only calls it.
+CH05_TASK1='cp -R ../../ch05/files/. . && awk "/^func Compare\\(spec Spec\\)/ { print; print \"\\treturn CompareSequential(spec)\"; print \"}\"; print \"\"; print \"func notYet(spec Spec) (*Report, error) {\"; next } { print }" ../../ch05/solution/harness/harness.go > harness/harness.go'
 # soldir <chapter>: the chapter's reference solution, in either layout.
 soldir() {
   if [ -d "$ROOT/$1/solution" ]; then echo "$ROOT/$1/solution"; else echo "$ROOT/solutions/$1"; fi
@@ -161,21 +163,29 @@ ch04() {
 }
 
 ch05() {
-  verify ch05
+  # The problem, in the reader's chapter 4 project: one comparison, one core.
+  tw ch05 before 'go build -o /tmp/banditsim .' \
+    'time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 1000 > /dev/null'
+  TW_PRE="$GITPRE" tw ch05 copy-in 'cp -R ../../ch05/files/. .' 'git status --short'
+  TW_PRE='cp -R ../../ch05/files/. .' tw ch05 starter-tests 'go build ./...'
+  TW_PRE="$CH05_TASK1" tw ch05 after-task1 'go test ./harness'
   t ch05 chanbasics 'go run ./_examples/chanbasics'
   t ch05 deadlock 'go run ./_examples/deadlock 2>&1 | head -4'
   t ch05 bench 'go test -run "^$" -bench Compare ./harness'
   t ch05 timing 'go build -o /tmp/banditsim .' \
-    'time /tmp/banditsim compare -sequential -scenario needle -steps 5000 -seeds 100 > /dev/null' \
-    'time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 100 > /dev/null' \
+    'time /tmp/banditsim compare -sequential -scenario needle -steps 5000 -seeds 1000 > /dev/null' \
+    'time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 1000 > /dev/null' \
     'diff <(/tmp/banditsim compare -sequential -seeds 20) <(/tmp/banditsim compare -seeds 20) && echo "identical output"'
   t ch05 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . run -seed 7 -steps 1000'
 }
 
 ch06() {
-  verify ch06
+  TW_PRE="$GITPRE" tw ch06 copy-in 'cp -R ../../ch06/files/. .' 'git status --short'
+  # The problem, in the reader's project right after copying the files in.
+  TW_PRE='cp -R ../../ch06/files/. .' tw ch06 race 'go run -race ./_examples/race 2>&1 | head -30'
+  TW_PRE='cp -R ../../ch06/files/. .' tw ch06 starter-tests 'go test ./bandit 2>&1 | grep -E "^(--- FAIL|FAIL|ok|panic: )"'
   t ch06 lostupdate 'go run ./_examples/lostupdate'
-  t ch06 race 'go run -race ./_examples/race 2>&1 | head -30'
+  t ch06 race-fixed 'go run -race ./_examples/race -locked'
   t ch06 copylock 'go vet ./_examples/copylock'
   t ch06 locked-test 'go test -race -count=1 -v -run "TestLockedConcurrentUse|TestLockedMatches" ./bandit'
   t ch06 bench 'go test -run "^$" -bench "LockedSelectUpdate|SnapshotHeavy" -cpu 1,4 ./bandit'
@@ -183,7 +193,14 @@ ch06() {
 }
 
 ch07() {
-  verify ch07
+  # The problem, in the reader's chapter 6 project: a typo that is known at the
+  # first job still costs the whole comparison.
+  tw ch07 before 'go build -o /tmp/banditsim .' \
+    'time /tmp/banditsim compare -policy ucbl,ucb1,thompson -steps 2000 -seeds 10000'
+  TW_PRE="$GITPRE" tw ch07 copy-in 'cp -R ../../ch07/files/. .' 'git status --short'
+  TW_PRE='cp -R ../../ch07/files/. .' tw ch07 starter-tests 'go build ./...'
+  t ch07 after 'go build -o /tmp/banditsim .' \
+    'time /tmp/banditsim compare -policy ucbl,ucb1,thompson -steps 2000 -seeds 10000'
   t ch07 selectdemo 'go run ./_examples/selectdemo'
   t ch07 leak 'go run ./_examples/leak 2>&1 | head -9'
   t ch07 pool-test 'go test -race -count=1 -v ./pool'

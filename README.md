@@ -22,7 +22,7 @@ cp -R ../../ch01/solution/. .     # behind? take the end of chapter 1, then read
 
 The page explains each task, with hints and an answer behind a click. Many tasks change code you wrote earlier, because changing working code is most of the job. Extra tasks live in `_extras/chNN`, which `go test ./...` skips; run them with `go test ./_extras/chNN`.
 
-**Chapters 1 to 4 use this format so far.** Chapters 5 to 14 and the capstone are still in the earlier one: they show each listing for you to copy into your project, their reference projects are in `solutions/chNN`, and their exercises are separate, in `exercises/chNN/exM` (a starter with a `// TODO`, a test, and the answer in `reference/`). `tools/check.sh chNN work/banditlab` runs a chapter's reference tests against your project without modifying it, and `tools/start.sh chNN dir` copies a reference project into a new directory.
+**Chapters 1 to 7 use this format so far.** Chapters 8 to 14 and the capstone are still in the earlier one: they show each listing for you to copy into your project, their reference projects are in `solutions/chNN`, and their exercises are separate, in `exercises/chNN/exM` (a starter with a `// TODO`, a test, and the answer in `reference/`). `tools/check.sh chNN work/banditlab` runs a chapter's reference tests against your project without modifying it, and `tools/start.sh chNN dir` copies a reference project into a new directory.
 
 ## Requirements
 
@@ -34,8 +34,8 @@ The page explains each task, with hints and an answer behind a click. Many tasks
 | --- | --- |
 | `site/` | The course website. `index.html` and `chNN.html` are built output; `src/` holds the page sources. |
 | `primer/` | The primer's runnable examples and its five tasks. |
-| `ch01/` to `ch04/` | Each chapter's `files/` and `solution/`. |
-| `solutions/`, `exercises/` | Reference projects and separate exercises for the chapters not yet converted (5 to 14 and the capstone). |
+| `ch01/` to `ch07/` | Each chapter's `files/` and `solution/`. |
+| `solutions/`, `exercises/` | Reference projects and separate exercises for the chapters not yet converted (8 to 14 and the capstone). |
 | `tools/` | Scripts for readers (`check.sh`, `start.sh`, `pg.sh`) and for maintaining the course. |
 | `TODO.md` | What could not be verified, and what is deferred. |
 
@@ -46,7 +46,7 @@ Pages are built from real source, never retyped. A page source in `site/src/` co
 ```sh
 tools/transcripts.sh ch04                   # re-run the commands a page shows, refresh site/generated/
 (cd tools/build_site && go run . ../..)     # rebuild every page; checks links, coverage and doc links
-tools/check_chapters.sh                     # play a reader through chapters 1-4: tests fail until the tasks are done, solutions pass
+tools/check_chapters.sh                     # play a reader through each converted chapter: tests fail until the tasks are done, solutions pass
 tools/check_exercises.sh                    # old-format exercises: starters fail, references pass
 ```
 
@@ -68,4 +68,4 @@ Changes from the original plan, in case you compare against an older copy:
 - The bandit policies changed once after chapter 8: chapter 12 makes UCB1 count selections that are still waiting for a reward, and keeps the old behaviour as `ucb1:naive`.
 - Protobuf code is generated with `buf`, which needs no `protoc`.
 - Chapter 14 could not build or run containers where it was written; `TODO.md` lists exactly what was and was not checked.
-- The course format changed from "copy the listings" to "your own project, with tests, tasks and a reference solution per chapter"; chapters 1 to 4 are converted.
+- The course format changed from "copy the listings" to "your own project, with tests, tasks and a reference solution per chapter"; chapters 1 to 7 are converted.

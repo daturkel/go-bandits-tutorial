@@ -1,0 +1,6 @@
+$ go test ./bandit 2>&1 | grep -E "^(--- FAIL|FAIL|ok|panic: )"
+--- FAIL: TestLockedConcurrentUse (0.01s)
+--- FAIL: TestSnapshotIsACopy (0.00s)
+panic: runtime error: index out of range [2] with length 0 [recovered, repanicked]
+FAIL	banditlab/bandit	0.046s
+FAIL

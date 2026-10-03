@@ -47,6 +47,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <article class="prose">
 <h2 id="what-you-will-build">What you will build</h2>
+<p>The simulator will soon be configured by colleagues on the command line and, later, by a service reading its settings. Nonsense input has to be rejected with a clear message, not accepted silently or turned into a crash, and before anyone trusts the code it needs tests that say what it promises.</p>
 <p>Chapter 2 left failure modes open: a probability of 1.7 is accepted, an unknown scenario comes back as a bare <code>false</code>, and a misbehaving policy crashes the runner with an index error. This chapter turns each into an explicit, testable <code>error</code>, then puts a real test suite around the simulator: table-driven tests, a golden-file test for the command line's output, and a benchmark that says what one policy step costs.</p>
 <p>When you have finished, mistakes are reported clearly instead of crashing or being silently accepted:</p>
 <figure class="term"><figcaption><span class="fname">terminal</span></figcaption>

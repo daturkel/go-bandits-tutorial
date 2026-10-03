@@ -1,19 +1,27 @@
 <h2>What you will build</h2>
-<p>A parallel version of the comparison harness. Chapter 4's <code>Compare</code> runs 400 independent simulations one after another; here each run gets its own goroutine, the results come back over a channel, and the report is assembled from them. On four cores the benchmark below drops from about 0.7 seconds to about 0.2, with output byte-for-byte identical to the sequential version.</p>
-<p>The simulations are a good first concurrent workload because they share nothing: each has its own environment, policy and random generator. That lets this chapter concentrate on goroutines and channels. Chapter 6 deals with what happens when goroutines <em>do</em> share state.</p>
+<p>Your bandit is meant to choose, request by request, which of three versions of a ranking model serves a user, and before it is trusted with traffic the policies have to be compared properly. The experiment review wants every policy run against a thousand seeds per scenario. Here is chapter 4's harness doing that, built from your project before you copy anything in:</p>
+<!-- transcript: ch05/before -->
+<p>Five seconds of wall-clock time and five of CPU time: one core did all the work while the others sat idle, and this is one scenario of several. The simulations share nothing (each has its own environment, policy and random generator), so they can all run at once. This chapter makes the harness do that, with goroutines and channels, and keeps the report byte-for-byte identical to the sequential one. By the end the same command takes a third of the time.</p>
+<p>Because nothing is shared, this chapter can concentrate on starting concurrent work and collecting its results. Chapter 6 deals with what happens when goroutines <em>do</em> share state.</p>
 
-<h2>Concepts introduced</h2>
+<h2>The Go in this chapter</h2>
 <ul>
-  <li>The <code>go</code> statement and goroutines</li>
-  <li>Channels: unbuffered and buffered, send, receive, <code>close</code>, <code>range</code> over a channel</li>
-  <li><code>sync.WaitGroup</code></li>
-  <li>The fan-out / fan-in pattern, and closing a channel from the right place</li>
-  <li>Writing results into per-goroutine slots to keep output deterministic</li>
-  <li>Goroutines vs. threads and <code>asyncio</code></li>
-  <li>Deadlocks, and reading Go's deadlock report</li>
+  <li><strong>Goroutines.</strong> The <code>go</code> statement starts a function running concurrently with the caller.</li>
+  <li><strong>Channels.</strong> Unbuffered and buffered, send and receive, <code>close</code>, and <code>range</code> over a channel.</li>
+  <li><strong><code>sync.WaitGroup</code></strong>, to wait for a set of goroutines to finish.</li>
+  <li><strong>Fan-out, fan-in</strong>, and closing a channel from the right place.</li>
+  <li><strong>Deterministic results from concurrent work</strong>: each result goes to a fixed slot, never "in the order they arrived".</li>
+  <li><strong>Deadlocks</strong>, and reading Go's report of one.</li>
 </ul>
 
-<h2>Step 1: goroutines and channels on their own</h2>
+<h2>Bring in this chapter's files</h2>
+<p>From your project:</p>
+<!-- transcript: ch05/copy-in -->
+<p>New: two small example programs, and this chapter's extras. Replaced: <code>compare.go</code>, which gains a <code>-sequential</code> flag, and <code>harness_test.go</code>, with tests for the concurrent version. The file you change is your own <code>harness/harness.go</code>. Build:</p>
+<!-- transcript: ch05/starter-tests -->
+<p>The new <code>compare.go</code> calls a <code>CompareSequential</code> that does not exist yet. That is task 1.</p>
+
+<h2>Goroutines and channels</h2>
 <p>Putting <code>go</code> in front of a function call starts it in a new <strong>goroutine</strong> and returns immediately. A goroutine is a lightweight thread managed by the Go runtime rather than the operating system. It starts with a stack of a few kilobytes that grows as needed, so programs routinely run tens of thousands at once. The runtime multiplexes them onto a small pool of OS threads, by default one per CPU core.</p>
 
 <aside class="callout py">
@@ -21,100 +29,165 @@
   <p>Python has two concurrency models, and neither maps directly. Threads share memory but the GIL lets only one run Python bytecode at a time, so CPU-bound work does not speed up; <code>multiprocessing</code> gets real parallelism at the price of separate processes and pickled messages. <code>asyncio</code> multiplexes many tasks on one thread, and every function that can wait must be marked <code>async</code> and called with <code>await</code>. Goroutines are closer to threads that are cheap and truly parallel: any ordinary function can be started with <code>go</code>, blocking calls are fine because the runtime parks the goroutine and runs another, and there is no <code>async</code> colouring to spread through your code. The trade-off is that goroutines share memory by default, which is what chapter 6 is about.</p>
 </aside>
 
-<p>Goroutines need a way to hand values to each other. A <strong>channel</strong> is a typed conduit: <code>ch &lt;- v</code> sends, <code>v := &lt;-ch</code> receives. On an <em>unbuffered</em> channel a send waits until another goroutine is ready to receive, and the reverse, so it doubles as synchronisation. A <em>buffered</em> channel, <code>make(chan int, 2)</code>, holds up to that many values before a send waits. The program below shows both, and the pattern for ending a stream:</p>
+<p>Goroutines need a way to hand values to each other. A <strong>channel</strong> is a typed conduit: <code>ch &lt;- v</code> sends, <code>v := &lt;-ch</code> receives. On an <em>unbuffered</em> channel, made with <code>make(chan int)</code>, a send waits until another goroutine is ready to receive, and the reverse, so it doubles as synchronisation. A <em>buffered</em> channel, <code>make(chan int, 2)</code>, holds up to that many values before a send waits. Before you run this program, predict how many messages it counts and in what order they arrive:</p>
 <!-- include: ch05/_examples/chanbasics/main.go title="_examples/chanbasics/main.go" -->
+<p>Run it with <code>go run ./_examples/chanbasics</code>:</p>
 <!-- transcript: ch05/chanbasics -->
 <p>Things to take from it:</p>
 <ul>
-  <li><code>sync.WaitGroup</code> counts running goroutines: <code>Add(1)</code> before starting one, <code>Done()</code> when it finishes (deferred, so it runs on every exit path), <code>Wait()</code> blocks until the count is zero.</li>
-  <li><strong>Only the sending side closes a channel</strong>, and only when nothing else will send. Here a helper goroutine waits for all senders and then closes. Sending on a closed channel panics; receiving from one returns what is left and then the zero value.</li>
+  <li><a href="https://pkg.go.dev/sync#WaitGroup"><code>sync.WaitGroup</code></a> counts running goroutines: <a href="https://pkg.go.dev/sync#WaitGroup.Add"><code>wg.Add(1)</code></a> before starting one, <a href="https://pkg.go.dev/sync#WaitGroup.Done"><code>wg.Done()</code></a> when it finishes, <a href="https://pkg.go.dev/sync#WaitGroup.Wait"><code>wg.Wait()</code></a> blocks until the count is back to zero. <code>Done</code> is usually deferred: <code>defer wg.Done()</code> as the goroutine's first line runs it however the function returns.</li>
+  <li><strong>Only the sending side closes a channel</strong>, with the built-in <code>close(ch)</code>, and only when nothing else will send. Here a helper goroutine waits for all the senders and then closes. Sending on a closed channel panics; receiving from one returns what is left and then the zero value.</li>
   <li><code>for v := range ch</code> receives until the channel is closed and drained. <code>v, ok := &lt;-ch</code> reports the same condition with <code>ok == false</code>.</li>
-  <li>The three messages arrive in whatever order the goroutines finish. The program counts them because printing them would make the output differ between runs.</li>
+  <li><code>go func() { ... }()</code> starts a <em>function literal</em> in a goroutine; the trailing <code>()</code> calls it. It can use the variables around it. Since Go 1.22 each iteration of a <code>for</code> loop has its own copy of the loop variables, so a goroutine started in a loop sees that iteration's values. Older code wrote <code>i := i</code> first; that is why, if you meet it.</li>
+  <li>The three messages arrive in whatever order the goroutines finish, so the program counts them instead of printing them.</li>
 </ul>
 <p>Get the pairing wrong and the runtime tells you. A send with no receiver anywhere, in a program with nothing else running:</p>
 <!-- include: ch05/_examples/deadlock/main.go title="_examples/deadlock/main.go" -->
 <!-- transcript: ch05/deadlock -->
 <p>When every goroutine is blocked, the runtime detects it and aborts, naming the state each one is stuck in (<code>chan send</code> here). The detector only fires when <em>all</em> goroutines are stuck. In a larger program, one blocked goroutine among many running ones is silently leaked. Chapter 7 covers how to avoid and find those.</p>
 
-<h2>Step 2: fan out, fan in</h2>
-<p>The shape of the harness is one job per (policy, seed) pair, all independent. The parallel version starts a goroutine for each job, and every goroutine sends its outcome on one shared channel; the collecting loop is the <strong>fan-in</strong>.</p>
-<!-- include: ch05/harness/harness.go#Compare diff -->
-<p>The pieces, in order:</p>
+<h2>Keep the sequential version</h2>
+<p>Before making <code>Compare</code> concurrent, keep the version you have. It becomes the reference the concurrent one must match exactly, and the baseline that shows whether the concurrency pays off. Both versions need the same input checks, so those move into a method of their own.</p>
+
+<details class="exercise" open>
+  <summary>Task 1: <code>CompareSequential</code> and <code>validate</code></summary>
+  <div class="ex-body">
+    <p>In your <code>harness/harness.go</code>:</p>
+    <ul>
+      <li>Move the checks at the top of <code>Compare</code> (steps and seeds positive, at least one policy) into a method <code>func (s Spec) validate() error</code> that returns the same errors, or <code>nil</code>.</li>
+      <li>Rename <code>Compare</code> to <code>CompareSequential</code>, and make it start with <code>if err := spec.validate(); err != nil { return nil, err }</code>.</li>
+      <li>Add a new <code>Compare</code> with the same signature that, for now, only returns <code>CompareSequential(spec)</code>.</li>
+    </ul>
+    <p>Everything compiles again. Run <code>go test ./harness</code>:</p>
+<!-- transcript: ch05/after-task1 -->
+    <p>All the other tests pass, because a <code>Compare</code> that calls <code>CompareSequential</code> gives exactly the right answers. One test checks that the runs actually overlap: with two or more cores, <code>Compare</code> must take clearly less wall-clock time than <code>CompareSequential</code> (each gets its best of three runs, and the margin it demands is wide). From here, task 2 is the one that turns it green.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch05/harness/harness.go#Spec.validate,CompareSequential -->
+    <p>A method on a struct is the natural home for a check that belongs to the struct. <code>validate</code> is lowercase, so it is internal to the <code>harness</code> package, and the rest of <code>CompareSequential</code> is your chapter 4 code, untouched.</p>
+    </details>
+  </div>
+</details>
+
+<h2>Fan out, fan in</h2>
+<p>The work is one job per (policy, seed) pair, all independent. The concurrent version starts a goroutine for each job (the <strong>fan-out</strong>), and every goroutine sends its outcome on one shared channel, which a single loop receives from (the <strong>fan-in</strong>). Three rules make it correct:</p>
 <ol>
-  <li><strong>Per-job goroutines.</strong> Each closure captures <code>p</code>, <code>policySpec</code> and <code>i</code>. Since Go 1.22 every iteration of a <code>for</code> loop has its own copy of the loop variables, so this is safe. Older code had to write <code>p := p</code> first, and if you read such code, that is why.</li>
-  <li><strong><code>defer wg.Done()</code></strong> guarantees the count drops even if the goroutine returns early.</li>
-  <li><strong>The closer.</strong> A separate goroutine waits for every worker and then closes <code>results</code>. It cannot be the collecting loop itself, since that loop is what the workers are waiting on.</li>
-  <li><strong>The collector</strong> is the range loop. It runs on the calling goroutine and is the only one that touches <code>runs</code>, <code>names</code> and <code>errs</code>, so those need no protection.</li>
+  <li><strong>Results go to fixed slots.</strong> Goroutines finish in an arbitrary order, and the report must not depend on it. An outcome carries the indexes of its job, and the collecting loop stores it at <code>runs[policy][seed]</code>; afterwards the curves are summarised in index order, exactly as the sequential loop would have produced them. Appending outcomes as they arrive would give a report that changes from run to run.</li>
+  <li><strong>Only the collecting loop touches the results.</strong> It runs on the calling goroutine, so the slices it fills need no protection.</li>
+  <li><strong>Everything sent is received.</strong> If the loop returned at the first error, the remaining goroutines would block forever on a send that nobody reads, and leak. So the loop drains the channel completely, and the channel is closed by a separate goroutine that waits for every sender, just as in <code>chanbasics</code>.</li>
 </ol>
-<p>The loop keeps receiving after it sees an error rather than returning at once. If it returned early, the remaining workers would block forever trying to send to a channel nobody reads, and those goroutines would leak. Draining everything is the simplest way to be sure none are left behind; chapter 7 shows the alternative, cancellation.</p>
+<p>Errors need the same care as results. If two policies are misspelled, which error should the user see? Whichever goroutine happened to fail first would be a different answer on each run. Store errors in slots too, and after the loop report the first failure in (policy, seed) order, the one <code>CompareSequential</code> stops at.</p>
 
-<h2>Step 3: keep the output deterministic</h2>
-<p>Goroutines finish in an arbitrary order, and the report must not depend on it. The approach is to give every job a fixed slot. An outcome carries its <code>policy</code> and <code>seed</code> indexes, and the collector stores it at <code>runs[policy][seed]</code>. Because each seed's random streams are independent (chapter 1), the same slot always receives the same curve, and <code>summarise</code> then reads them in index order. Appending outcomes as they arrive would produce a report that changes from run to run.</p>
-<p>Errors get the same treatment. If two policies are misspelled, which error should you see? Whichever goroutine happened to fail first would be a different answer on each run. <code>firstError</code> scans the stored errors in (policy, seed) order, so the answer is always the earliest:</p>
-<!-- include: ch05/harness/harness.go#Spec.validate,newRuns,firstError,buildReport diff -->
-<p>The sequential version reuses all of these helpers. It exists as the reference the parallel version must match, and as the baseline for the benchmark:</p>
-<!-- include: ch05/harness/harness.go#CompareSequential diff -->
+<details class="exercise" open>
+  <summary>Task 2: a concurrent <code>Compare</code></summary>
+  <div class="ex-body">
+    <p>Replace the body of your temporary <code>Compare</code>. It validates the spec, runs every (policy, seed) job in its own goroutine with <code>runOnce</code>, collects the outcomes over a channel, and returns the same report as <code>CompareSequential</code>, or the same error. Add <code>"sync"</code> to the imports for <a href="https://pkg.go.dev/sync#WaitGroup"><code>sync.WaitGroup</code></a> and its <a href="https://pkg.go.dev/sync#WaitGroup.Add"><code>Add</code></a>, <a href="https://pkg.go.dev/sync#WaitGroup.Done"><code>Done</code></a> and <a href="https://pkg.go.dev/sync#WaitGroup.Wait"><code>Wait</code></a>. The tests check equality with the sequential report, that the error names the first bad policy every time, and that the runs overlap. Run <code>go test -race ./harness</code>: the race detector, which chapter 6 explains, will also confirm that only one goroutine touches the results.</p>
+    <details class="answer"><summary>Hint 1: the shape</summary>
+    <p>Four parts, in order: declare a small <code>outcome</code> struct (policy index, seed index, the <code>bandit.Result</code>, an <code>error</code>) and an unbuffered channel of it; a double loop that starts one goroutine per job; a goroutine that waits for all of them and closes the channel; and a <code>for o := range results</code> loop that stores each outcome. After the loop, check the errors in order, then summarise.</p>
+    </details>
+    <details class="answer"><summary>Hint 2: the goroutines</summary>
+    <pre><code>var wg sync.WaitGroup
+for p, policySpec := range spec.Policies {
+    for i := range spec.Seeds {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            res, err := runOnce(spec, policySpec, spec.BaseSeed+uint64(i))
+            results &lt;- outcome{policy: p, seed: i, res: res, err: err}
+        }()
+    }
+}
+go func() {
+    wg.Wait()
+    close(results)
+}()</code></pre>
+    </details>
+    <details class="answer"><summary>Hint 3: the slots</summary>
+    <p>Before the loop, allocate <code>runs := make([][][]float64, len(spec.Policies))</code>, and in a loop over the policies give each <code>runs[p]</code> a slice of <code>spec.Seeds</code> curves; do the same for a <code>[][]error</code>, and keep a <code>[]string</code> of policy names (each run's <code>res.Policy</code>). After the receive loop, walk the errors in order and return the first, wrapped as <code>CompareSequential</code> wraps it; otherwise build the report with <code>summarise(names[p], runs[p])</code> for each policy.</p>
+    </details>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch05/harness/harness.go#Compare -->
+    <p>The closer has to be its own goroutine: <code>wg.Wait()</code> in the calling goroutine, before the receive loop, would wait for senders that are themselves waiting for a receiver, a deadlock. Comparing curves from the two versions with <code>!=</code>, as the test does, is legitimate here because both compute each mean from the same numbers in the same order.</p>
+    </details>
+  </div>
+</details>
 
-<h2>Step 4: expose it and measure</h2>
-<p>The CLI gets a <code>-sequential</code> flag so the two can be compared from the command line:</p>
+<h2>Measure it</h2>
+<p><code>compare.go</code> now has a <code>-sequential</code> flag, so the two can be compared from the command line:</p>
 <!-- include: ch05/compare.go#compareCmd diff -->
-<p>Two tests pin down the behaviour: the parallel report equals the sequential one exactly (comparing floating-point means with <code>!=</code> is legitimate here, because both compute them in the same order from the same numbers), and the reported error is the same on every run:</p>
-<!-- include: ch05/harness/harness_test.go#TestCompareMatchesSequential,TestCompareErrorIsDeterministic -->
-<p>A benchmark runs both versions on a smaller spec:</p>
+<p>The benchmark in <code>harness_test.go</code> runs both versions on a smaller spec:</p>
 <!-- include: ch05/harness/harness_test.go#BenchmarkCompare -->
 <!-- transcript: ch05/bench -->
-<p>The <code>-4</code> suffix is <code>GOMAXPROCS</code>, the number of cores the runtime uses. Here it is 4, and the goroutine version is between three and three and a half times faster. On the real command, wall-clock time drops the same way, while CPU time stays about the same: the work is identical, it is just spread across cores. The last command confirms that the output is unchanged.</p>
+<p>The <code>-4</code> suffix is <code>GOMAXPROCS</code>, the number of cores the runtime uses. Here it is 4, and the goroutine version is about three and a half times faster. On the real command, wall-clock time drops the same way while CPU time stays about the same: the work is identical, it is just spread across the cores. The last command confirms that the output is unchanged:</p>
 <!-- transcript: ch05/timing -->
-<p>The speed-up will not be exactly the core count. The work is uneven, results all pass through one channel, and the last few goroutines finish alone. Numbers here are from the machine that built this page.</p>
+<p>The thousand-seed comparison from the top of the page now takes a third of the time. The speed-up is not exactly the core count: the work is uneven, every result passes through one channel, and the last few goroutines finish alone. These numbers are from the machine that built this page; yours will differ, but the ratio should be similar.</p>
 
 <h2>What this version does not do</h2>
 <ul>
-  <li><strong>It starts as many goroutines as there are jobs.</strong> With 400 runs that is fine. With 400,000 they would all exist at once, each holding a 40 KB regret curve. The usual remedy is a fixed number of worker goroutines pulling jobs from a channel, which chapter 7 builds.</li>
-  <li><strong>It cannot be cancelled.</strong> Once started, <code>Compare</code> runs to the end. Chapter 7 adds <code>context.Context</code>.</li>
-  <li><strong>It shares nothing mutable.</strong> That is the reason no locks appear. When goroutines do share a policy, as a server's request handlers will, the next chapter's tools are needed.</li>
+  <li><strong>It starts as many goroutines as there are jobs.</strong> With 4,000 runs that is fine. With 400,000 they would all exist at once, each holding a 40 KB regret curve. The usual remedy is a fixed number of worker goroutines pulling jobs from a channel, which chapter 7 builds.</li>
+  <li><strong>It cannot be cancelled.</strong> Once started, <code>Compare</code> runs to the end, even after the first job has failed. Chapter 7 adds <code>context.Context</code>.</li>
+  <li><strong>It shares nothing mutable.</strong> That is why no locks appear. When goroutines do share a policy, as a server's request handlers will, the next chapter's tools are needed.</li>
 </ul>
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>First check your own project against this chapter's reference tests. The script never modifies your files; output when everything matches:</p>
-<!-- transcript: ch05/verify -->
-<!-- tests -->
-<p>The same checks by hand, from your project directory:</p>
+<p>Both tasks done: these succeed, and the last command should match the output below.</p>
 <!-- transcript: ch05/checkpoint -->
+<p>The <code>run</code> output is chapter 4's, unchanged: this chapter changed how the harness schedules work, not what it computes. If you get stuck, compare with <code>ch05/solution</code>, or copy it over your project and read <code>git diff</code>.</p>
+<p>Then commit:</p>
+<figure class="term"><figcaption><span class="fname">from work/banditlab</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">git add -A</span><span class="ln cmd">git commit -m "Chapter 5: a concurrent harness"</span></code></pre></figure>
 </div>
 
-<h2>Exercises</h2>
-<p>Starters and tests are in <code>exercises/ch05</code>. Their tests use timeouts, so a wrong answer fails after a couple of seconds instead of hanging.</p>
+<h2>What you learned</h2>
+<ul>
+  <li><code>go f()</code> starts a goroutine; goroutines are cheap, and the runtime spreads them across all cores.</li>
+  <li>Channels pass values between goroutines and synchronise them; only the sender closes, and <code>range</code> receives until the close.</li>
+  <li>A <code>sync.WaitGroup</code> waits for a set of goroutines; a separate goroutine that waits and then closes the channel lets the receiver finish.</li>
+  <li>Concurrent results stay deterministic when each one goes to a fixed slot and errors are chosen by order, not by arrival.</li>
+  <li>Every value sent must be received, or a goroutine blocks forever; the runtime reports a deadlock only when everything is stuck.</li>
+</ul>
+
+<h2>Try it</h2>
+<ul>
+  <li>Run the benchmark with <code>-cpu 1,2,4</code>. How close to linear is the speed-up, and where does it stop?</li>
+  <li>Make the receive loop <code>return</code> as soon as it sees an error, and run the tests with <code>-race</code> a few times. Nothing fails; why is it still a bug? (Count the goroutines still blocked on their send.)</li>
+</ul>
+
+<h2>Extra tasks</h2>
+<p>Three more, in <code>_extras/ch05</code> with tests next to them; run them with <code>go test -race ./_extras/ch05</code>. Their tests use timeouts, so a wrong answer fails after a couple of seconds instead of hanging.</p>
 
 <details class="exercise">
-  <summary>1. ParallelMap</summary>
+  <summary>Extra 1: <code>ParallelMap</code></summary>
   <div class="ex-body">
-    <p>Implement <code>ParallelMap[T, U any](xs []T, f func(T) U) []U</code> in <code>exercises/ch05/ex1</code>: call <code>f</code> on every element in its own goroutine and return the results in input order. One test makes all calls wait for each other, so it only passes if they really overlap.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch05/ex1/reference/pmap.go#ParallelMap -->
-    <p>Each goroutine writes to <code>out[i]</code>, a different memory location from every other goroutine's, so there is no race and no lock. <code>wg.Wait()</code> also guarantees the writes are visible to the caller before it reads the slice. This is the same trick as the harness's <code>runs[policy][seed]</code> slots.</p>
+<!-- include: ch05/files/_extras/ch05/pmap.go#ParallelMap -->
+    <p>Call <code>f</code> on every element in its own goroutine and return the results in input order. One test makes all calls wait for each other, so it only passes if they really overlap.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch05/_extras/ch05/pmap.go#ParallelMap -->
+    <p>Each goroutine writes to <code>out[i]</code>, a different memory location from every other goroutine's, so there is no race and no lock. <code>wg.Wait()</code> also guarantees the writes are visible to the caller before it reads the slice. It is the same idea as the harness's slots, without a channel.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>2. Merge several channels into one</summary>
+  <summary>Extra 2: merge several channels into one</summary>
   <div class="ex-body">
-    <p>Implement <code>Merge(chans ...&lt;-chan int) &lt;-chan int</code> in <code>exercises/ch05/ex2</code>. Every value from any input must appear on the output, and the output must close after all inputs have closed. <code>&lt;-chan int</code> is a receive-only channel; a function that only reads from a channel should say so in its type.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch05/ex2/reference/merge.go#Merge -->
-    <p>This is fan-in as a reusable function. One forwarding goroutine per input, plus one closer that waits for them all. Closing from the forwarders themselves would be a bug: the first one to finish would close a channel the others are still sending to, and that panics.</p>
+<!-- include: ch05/files/_extras/ch05/merge.go#Merge -->
+    <p>Every value from any input must appear on the output, and the output must close after all inputs have closed. <code>&lt;-chan int</code> is a receive-only channel; a function that only reads from a channel should say so in its type.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch05/_extras/ch05/merge.go#Merge -->
+    <p>This is fan-in as a reusable function: one forwarding goroutine per input, plus one closer that waits for them all. Closing from the forwarders themselves would be a bug: the first one to finish would close a channel the others are still sending to, and that panics.</p>
     </details>
   </div>
 </details>
 
 <details class="exercise">
-  <summary>3. A two-stage pipeline</summary>
+  <summary>Extra 3: a two-stage pipeline</summary>
   <div class="ex-body">
-    <p>In <code>exercises/ch05/ex3</code>, implement <code>Generate(nums ...int) &lt;-chan int</code> (send the numbers, then close) and <code>Square(in &lt;-chan int) &lt;-chan int</code> (square each value, close when the input closes). The test chains them: <code>Square(Square(Generate(1, 2, 3)))</code>.</p>
-    <details class="answer"><summary>Reference answer</summary>
-<!-- include: exercises/ch05/ex3/reference/pipeline.go#Generate,Square -->
-    <p>Each stage owns the channel it creates: it is the only sender, so it is the one that closes it, and <code>defer close(out)</code> makes that hard to forget. Stages connected this way run concurrently, so a slow consumer applies backpressure all the way up the chain through the unbuffered sends. A consumer that stops reading early would strand the upstream goroutines, and chapter 7 fixes that with cancellation.</p>
+<!-- include: ch05/files/_extras/ch05/pipeline.go#Generate,Square -->
+    <p><code>Generate</code> sends the numbers, then closes; <code>Square</code> squares each value and closes when its input closes. The test chains them: <code>Square(Square(Generate(1, 2, 3)))</code>.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch05/_extras/ch05/pipeline.go#Generate,Square -->
+    <p>Each stage owns the channel it creates: it is the only sender, so it is the one that closes it, and <code>defer close(out)</code> makes that hard to forget. Stages connected this way run concurrently, so a slow consumer applies backpressure all the way up the chain through the unbuffered sends. A consumer that stops reading early would strand the upstream goroutines; chapter 7 fixes that with cancellation.</p>
     </details>
   </div>
 </details>

@@ -1,0 +1,3 @@
+$ go build -o /tmp/banditsim .
+$ time /tmp/banditsim compare -scenario needle -steps 5000 -seeds 1000 > /dev/null
+real 5.01s, cpu 4.95s

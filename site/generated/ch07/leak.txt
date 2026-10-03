@@ -4,7 +4,7 @@ after 1000 timed-out leaky calls: 1001 goroutine(s)
 
 what is running:
 goroutine profile: total 1001
-1000 @ 0x46d76e 0x40b3e5 0x40b037 0x4d13b6 0x474381
-#	0x4d13b5	main.fetchLeaky.func1+0x35	/home/user/go-bandits-tutorial/solutions/ch07/_examples/leak/main.go:20
+1000 @ 0x47f06a 0x41421c 0x413e17 0x4e09f6 0x484ec1
+#	0x4e09f5	main.fetchLeaky.func1+0x35	/home/user/go-bandits-tutorial/ch07/solution/_examples/leak/main.go:20
 
-1 @ 0x432bb1 0x46cb9d 0x4bdaf1 0x4bd925 0x4ba74b 0x4d17f0 0x43cc0b 0x474381
+1 @ 0x440e11 0x47e3dd 0x4ce571 0x4ce245 0x4cb1a9 0x4e0996 0x44aa27 0x484ec1

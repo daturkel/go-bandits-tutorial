@@ -1,0 +1,4 @@
+$ go build -o /tmp/banditsim .
+$ time /tmp/banditsim compare -policy ucbl,ucb1,thompson -steps 2000 -seeds 10000
+banditsim: policy "ucbl", seed 1: unknown policy "ucbl" (known: epsgreedy, ucb1, thompson)
+real 4.41s, cpu 16.50s
