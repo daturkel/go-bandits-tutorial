@@ -9,6 +9,8 @@
 set -u
 export TIMEFORMAT='real %2Rs, cpu %2Us'
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# A reader commits each chapter; transcripts that show git status start from that.
+GITPRE='git init -q && git add -A && git -c user.name=reader -c user.email=reader@example.com commit -qm "previous chapter"'
 
 # soldir <chapter>: the chapter's reference solution, in either layout.
 soldir() {
@@ -28,16 +30,26 @@ t() {
   echo "wrote ${out#$ROOT/}"
 }
 
-# ts <chapter> <name> <commands...>: run each command in <chapter>/start.
-ts() {
+# tw <chapter> <name> <commands...>: play a reader. The project is
+# work/banditlab inside the repository, as the pages suggest, holding the
+# previous chapter's solution (chapter 1: nothing). The commands run there in
+# order, so a transcript can copy the chapter's files in (cp -R ../../chNN/files/. .)
+# and then show what the reader sees.
+tw() {
   local id=$1 name=$2; shift 2
-  local out="$ROOT/site/generated/$id/$name.txt"
+  local out="$ROOT/site/generated/$id/$name.txt" dir="$ROOT/work/banditlab"
+  local n=$((10#${id#ch}))
+  rm -rf "$dir"; mkdir -p "$dir"
+  if [ "$n" -gt 1 ]; then cp -R "$ROOT/$(printf 'ch%02d' $((n - 1)))/solution/." "$dir/"; fi
+  # TW_PRE: commands run first and not shown (the set-up a transcript assumes).
+  if [ -n "${TW_PRE:-}" ]; then (cd "$dir" && eval "$TW_PRE") > /dev/null 2>&1; fi
   mkdir -p "$(dirname "$out")"
   : > "$out"
   for cmd in "$@"; do
     echo "\$ $cmd" >> "$out"
-    (cd "$ROOT/$id/start" && eval "$cmd") >> "$out" 2>&1
+    (cd "$dir" && eval "$cmd") >> "$out" 2>&1
   done
+  rm -rf "$ROOT/work"
   echo "wrote ${out#$ROOT/}"
 }
 
@@ -91,23 +103,26 @@ primer() {
   tp test 'go test -v ./stats 2>&1 | grep -v "^=== RUN"'
 }
 ch01() {
-  tfresh ch01 mod-init 'mkdir banditlab && cd banditlab && go mod init banditlab && cat go.mod'
-  ts ch01 starter-tests "go test ./... 2>&1 | grep -E '^(--- FAIL|FAIL|ok)'"
+  tw ch01 setup 'git init -q' 'go mod init banditlab' 'go mod edit -go=1.27.0 -toolchain=go1.27.1' 'cat go.mod' 'cp -R ../../ch01/files/. .'
+  TW_PRE='go mod init banditlab; go mod edit -go=1.27.0 -toolchain=go1.27.1; cp -R ../../ch01/files/. .' \
+    tw ch01 starter-tests "go test ./... 2>&1 | grep -E '^(--- FAIL|FAIL|ok)'"
   t ch01 run 'go run .'
   t ch01 run-variants 'go run . -scenario needle -eps 0.05 -steps 100000' 'go run . -scenario nope'
   t ch01 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . -seed 7 -steps 1000'
 }
 
 ch02() {
-  ts ch02 starter-tests 'go test ./... 2>&1 | head -8'
+  TW_PRE="$GITPRE" tw ch02 copy-in 'cp -R ../../ch02/files/. .' 'git status --short'
+  TW_PRE='cp -R ../../ch02/files/. .' tw ch02 starter-tests 'go test ./... 2>&1 | head -16'
   t ch02 run 'go run .'
   t ch02 run-one 'go run . -scenario spread -policy ucb1 -steps 20000'
-  t ch02 value-receiver 'go run ./_examples'
+  t ch02 value-receiver 'go run ./_examples/valuereceiver'
   t ch02 checkpoint 'gofmt -l .' 'go vet ./...' 'go build ./...' 'go test -race -count=1 ./...' 'go run . -seed 7 -steps 1000'
 }
 
 ch03() {
-  ts ch03 starter-tests 'go test -run ArmError ./bandit 2>&1 | head -14'
+  TW_PRE="$GITPRE" tw ch03 copy-in 'cp -R ../../ch03/files/. .' 'git status --short'
+  TW_PRE='cp -R ../../ch03/files/. .' tw ch03 starter-tests 'go test ./... 2>&1 | head -14'
   t ch03 errors 'go run . -scenario nope' 'go run . -policy epsgreedy:lots' 'go run . -policy epsgreedy:2' 'go run . -policy thompson'
   t ch03 test-v 'go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit'
   t ch03 vet 'go vet ./_examples/vetbug; echo "exit status: $?"'
@@ -118,7 +133,8 @@ ch03() {
 }
 
 ch04() {
-  ts ch04 starter-tests 'go test ./bandit 2>&1 | head -8'
+  TW_PRE="$GITPRE" tw ch04 copy-in 'cp -R ../../ch04/files/. .' 'git status --short'
+  TW_PRE='cp -R ../../ch04/files/. .' tw ch04 starter-tests 'go test ./... 2>&1 | grep -v "^\s" | head -16'
   t ch04 compare 'go run . compare -scenario needle -steps 5000 -seeds 100'
   t ch04 compare-easy 'go run . compare -scenario easy -steps 5000 -seeds 100'
   t ch04 compare-close 'go run . compare -scenario close -steps 5000 -seeds 100'

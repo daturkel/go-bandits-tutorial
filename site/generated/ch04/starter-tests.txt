@@ -1,8 +1,17 @@
-$ go test ./bandit 2>&1 | head -8
+$ go test ./... 2>&1 | grep -v "^\s" | head -16
+# banditlab/stat [banditlab/stat.test]
+stat/stat_test.go:12:16: in call to Mean, T (type int) does not satisfy Number
+stat/stat_test.go:26:18: in call to StdErr, T (type int) does not satisfy Number
 # banditlab/bandit [banditlab/bandit.test]
 bandit/argmax_test.go:14:20: cannot use []int{…} (value of type []int) as []float64 value in argument to Argmax
 bandit/argmax_test.go:19:20: cannot use []string{…} (value of type []string) as []float64 value in argument to Argmax
 bandit/argmax_test.go:27:18: cannot use []int{…} (value of type []int) as []float64 value in argument to Argmax
 bandit/argmax_test.go:41:10: cannot use []int{} (value of type []int) as []float64 value in argument to Argmax
-FAIL	banditlab/bandit [build failed]
+--- FAIL: TestGolden (0.00s)
+flag provided but not defined: -bogus
+Usage of banditsim run:
+--- FAIL: TestCompareWritesFiles (0.00s)
 FAIL
+FAIL	banditlab	0.004s
+FAIL	banditlab/bandit [build failed]
+--- FAIL: TestCompareShapes (0.00s)

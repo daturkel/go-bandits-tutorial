@@ -14,7 +14,7 @@
 </ul>
 
 <h2>Step 1: select</h2>
-<p>A receive on a channel waits until a value arrives. <code>select</code> waits on several operations at once and runs the case of whichever becomes ready first. It looks like a <code>switch</code> whose cases are sends and receives. This program shows the four forms you will use most:</p>
+<p>A receive on a channel waits until a value arrives. <code>select</code> waits on several operations at once and runs the case of whichever becomes ready first. It looks like a <code>switch</code> whose cases are sends and receives. This program shows the forms you will use most:</p>
 <!-- include: ch07/_examples/selectdemo/main.go title="_examples/selectdemo/main.go" -->
 <!-- transcript: ch07/selectdemo -->
 <ol>
@@ -22,6 +22,7 @@
   <li><strong><code>default</code></strong> makes the <code>select</code> non-blocking: if no other case is ready right now, it runs immediately.</li>
   <li><strong>Several sources.</strong> The loop handles ticker events until the deadline channel fires. When more than one case is ready, Go picks one at random, so never rely on case order. The label <code>loop:</code> lets <code>break loop</code> leave the loop instead of only the <code>select</code>.</li>
   <li><strong>Contexts.</strong> A context exposes "stop now" as one channel, <code>ctx.Done()</code>, which is closed when the context ends. That is why cancellation composes with <code>select</code>.</li>
+  <li><strong>Cancelling by hand, with a reason.</strong> <code>context.WithCancelCause</code> returns a cancel function that takes an error; <code>context.Cause(ctx)</code> reads that reason back, while <code>ctx.Err()</code> still reports plain <code>context.Canceled</code>. The next section comes back to it.</li>
 </ol>
 <p>A nil channel is never ready, so setting a channel variable to <code>nil</code> removes its case from a <code>select</code>. That is occasionally useful for turning a case off.</p>
 
@@ -46,7 +47,7 @@
 <!-- include: ch07/bandit/sim.go#checkEvery,Run diff -->
 <p>The context becomes the first parameter, and the error wraps <code>ctx.Err()</code> so callers can test <code>errors.Is(err, context.Canceled)</code>. The partial result is returned with it, as for the out-of-range arm error in chapter 3. Two tests pin it down: a context that is already cancelled allows no pulls, and one cancelled in the middle of a run (by a stub policy that cancels after 3,000 choices) stops within one check interval:</p>
 <!-- include: ch07/bandit/sim_test.go#cancelAfter,cancelAfter.Select,TestRunNoticesCancellationMidRun -->
-<p><code>cancelAfter</code> embeds a <code>Policy</code> and overrides one method, the decorator shape from chapter 2's exercise.</p>
+<p><code>cancelAfter</code> embeds a <code>Policy</code> and overrides one method, the decorator shape from chapter 2's second extra task.</p>
 
 <h2>Step 4: how goroutines leak</h2>
 <p>Chapter 5 said that a goroutine blocked forever is invisible unless every goroutine in the program is blocked. It uses memory and whatever it references for the life of the process, and a server that leaks one per request eventually runs out. The typical cause is a send with no receiver, like this one:</p>

@@ -1,0 +1,11 @@
+$ git init -q
+$ go mod init banditlab
+go: creating new go.mod: module banditlab
+$ go mod edit -go=1.27.0 -toolchain=go1.27.1
+$ cat go.mod
+module banditlab
+
+go 1.27.0
+
+toolchain go1.27.1
+$ cp -R ../../ch01/files/. .

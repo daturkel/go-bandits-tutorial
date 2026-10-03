@@ -1,11 +1,15 @@
-$ go test -run ArmError ./bandit 2>&1 | head -14
---- FAIL: TestArmErrorMessageNamesTheArmAndTheCause (0.00s)
-    errors_test.go:13: Error() = "", want "arm 3: boom"
---- FAIL: TestArmErrorUnwrapsToItsCause (0.00s)
-    errors_test.go:20: errors.Is cannot see through ArmError: Unwrap is missing or wrong
---- FAIL: TestArmErrorSurvivesWrapping (0.00s)
-    errors_test.go:36: errors.Is lost the sentinel behind the wrapper
-    errors_test.go:39: message "outer context: " should include the arm
-FAIL
-FAIL	banditlab/bandit	0.004s
-FAIL
+$ go test ./... 2>&1 | head -14
+# banditlab [banditlab.test]
+./main.go:39:12: invalid operation: err != nil (mismatched types bool and untyped nil)
+./main.go:53:15: assignment mismatch: 2 variables but bandit.NewEnv returns 1 value
+./main.go:57:53: not enough arguments in call to bandit.NewPolicy
+	have (string, unknown type, *"math/rand/v2".Rand)
+	want (string, int, float64, *"math/rand/v2".Rand)
+./main.go:67:15: assignment mismatch: 2 variables but bandit.Run returns 1 value
+# banditlab/bandit [banditlab/bandit.test]
+bandit/bench_test.go:18:13: assignment mismatch: 2 variables but NewEnv returns 1 value
+bandit/bench_test.go:19:46: not enough arguments in call to NewPolicy
+	have (string, unknown type, *"math/rand/v2".Rand)
+	want (string, int, float64, *"math/rand/v2".Rand)
+bandit/bench_test.go:20:16: assignment mismatch: 2 variables but Run returns 1 value
+bandit/env_test.go:27:14: assignment mismatch: 2 variables but NewEnv returns 1 value

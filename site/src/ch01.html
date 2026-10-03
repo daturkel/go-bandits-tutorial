@@ -1,6 +1,8 @@
 <h2>What you will build</h2>
-<p>A command-line program that simulates a multi-armed bandit and reports how much reward it left on the table. You start from a project that is partly written. The plumbing is there, and eight pieces are missing, each with tests that fail until you write it. By the end you have a reproducible random-number source, an environment whose arms pay out with fixed probabilities, an epsilon-greedy policy that learns which arm is best, a simulation loop, and a program you can run with different settings.</p>
+<p>A command-line program that simulates a multi-armed bandit and reports how much reward it left on the table. You start from a few files the course provides. The plumbing is written, and eight pieces are left for you, each with tests that fail until you write it. By the end you have a reproducible random-number source, an environment whose arms pay out with fixed probabilities, an epsilon-greedy policy that learns which arm is best, a simulation loop, and a program you can run with different settings.</p>
 <p>Everything later in the course builds on these types, so it is worth being precise about the problem first.</p>
+<p>When you have finished, <code>go run .</code> prints this:</p>
+<!-- transcript: ch01/run -->
 
 <h2>The bandit problem</h2>
 <p>There are <em>k</em> arms. Pulling an arm pays 1 with some hidden probability and 0 otherwise. You want the most total reward over a fixed number of pulls, but you do not know the probabilities. Pulling the arm that looks best <em>exploits</em> what you know; pulling another arm <em>explores</em>, which costs reward now and might reveal something better. <strong>Regret</strong> measures the cost: the reward you would have collected by always pulling the best arm, minus what you collected.</p>
@@ -14,32 +16,31 @@
   <li><strong>Seen but not explained yet:</strong> <code>iota</code> in <code>rng.go</code>, and how <code>flag</code> and <code>os.Exit</code> work in <code>main.go</code>. Read them, run the program, and move on; the notes on each say where it comes back.</li>
 </ul>
 
-<h2>How the chapters work</h2>
-<p>You do not type a whole project. Each chapter has a <code>start</code> folder: the previous chapter's finished project (or, for chapter 1, a small one) with the interesting parts removed, and a <code>solution</code> folder next to it with the finished result. The missing parts are <strong>tasks</strong>, marked <code>TASK n</code> in the code. The page explains each one, you write it, and the tests tell you when it is right. Each task has a hint and an answer behind a click; try first. You never build on your own code from an earlier chapter, so a mistake in chapter 2 cannot make chapter 3 unworkable.</p>
+<h2>How the course works</h2>
+<p>You build one project through the whole course, in your own directory and your own git repository. It starts in this chapter as a small simulation and ends, fourteen chapters later, as a set of services. Every chapter adds to the code you wrote in the one before.</p>
+<p>Each chapter has a folder in the course repository with two things in it:</p>
 <ul>
-  <li>Work in <code>ch01/start</code>, in your clone of the repository, and edit the files there. To start over, <code>git restore ch01/start</code>; to keep the original untouched, copy the folder somewhere else first.</li>
-  <li>Run <code>go test ./...</code> in it whenever you like. At first the tests for the missing pieces fail; your job is to make them pass.</li>
-  <li>The code that is <em>not</em> a task is shown on the page and explained, but you do not need to type it.</li>
-  <li>At the end of the chapter there are extra tasks in the same project.</li>
+  <li><strong><code>files/</code></strong> is what you copy into your project at the start of the chapter: the chapter's tests, new files with the parts you write marked <code>TASK n</code>, and a few complete files the course gives you because they teach little (this chapter's <code>main.go</code>, for one). Copying adds and replaces only those files; your own code is not touched.</li>
+  <li><strong><code>solution/</code></strong> is the whole project as it stands at the end of the chapter.</li>
 </ul>
+<p>The page explains each task, and the tests tell you when it is right. A task can also ask you to change code you wrote earlier; from chapter 2 on, many do, because changing working code is most of the job. Each task has hints and an answer behind a click: try first.</p>
+<p>If you fall behind, or your project has drifted into a state you cannot untangle, copy a chapter's solution over it: <code>cp -R ../../ch01/solution/. .</code> from your project gives you the end of chapter 1. Because your project is a git repository, <code>git diff</code> then shows exactly how the reference differs from what you had.</p>
 
-<h2>Modules and packages</h2>
-<p>A Go <strong>module</strong> is a tree of packages versioned together, described by a <code>go.mod</code> file at its root. A <strong>package</strong> is a directory of <code>.go</code> files that share a <code>package</code> clause; it is the unit of compilation and of import. The starter is already a module. Had you started from an empty directory you would have created it like this:</p>
-<!-- transcript: ch01/mod-init -->
-<p><code>go mod init</code> records the Go version you happen to have installed. This project pins both a language version and an exact toolchain, so every reader builds with the same compiler:</p>
-<!-- include: ch01/go.mod -->
-<p>The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the exact release the <code>go</code> command uses, downloading it if yours is older. This module has no dependencies, so there is no <code>go.sum</code> and nothing else to manage.</p>
+<h2>Set up your project</h2>
+<p>A Go <strong>module</strong> is a tree of packages versioned together, described by a <code>go.mod</code> file at its root. A <strong>package</strong> is a directory of <code>.go</code> files that share a <code>package</code> clause; it is the unit of compilation and of import. Your project is one module. Create it in <code>work/banditlab</code> inside your clone of the course repository (the course ignores <code>work/</code>, and the commands on these pages assume that location so that <code>../../ch01</code> finds the chapter folder), make it a git repository, and copy in this chapter's files. From the root of your clone, <code>mkdir -p work/banditlab && cd work/banditlab</code>, then:</p>
+<!-- transcript: ch01/setup -->
+<p><code>go mod init</code> names the module, and that name is the root of every import path in it. It records the Go version you happen to have installed, which may be older than the course needs, so the next command pins both a minimum language version and an exact toolchain. The <code>go</code> line is the minimum language version the module needs; the <code>toolchain</code> line is the release the <code>go</code> command uses, downloading it if yours is older. Every reader then builds with the same compiler. This module has no dependencies, so there is no <code>go.sum</code> and nothing else to manage.</p>
 <p>The layout is small on purpose:</p>
 <figure class="term"><figcaption><span class="fname">layout</span></figcaption>
-<pre tabindex="0"><code><span class="ln out">banditlab/</span><span class="ln out">├── go.mod</span><span class="ln out">├── main.go              package main: flags, printing</span><span class="ln out">└── bandit/              package bandit: the library</span><span class="ln out">    ├── rng.go           seeded random numbers</span><span class="ln out">    ├── env.go           the environment (the world)</span><span class="ln out">    ├── scenarios.go     named test beds</span><span class="ln out">    ├── epsgreedy.go     the policy</span><span class="ln out">    └── sim.go           the simulation loop</span></code></pre></figure>
+<pre tabindex="0"><code><span class="ln out">banditlab/</span><span class="ln out">├── go.mod</span><span class="ln out">├── main.go              package main: flags, printing (given)</span><span class="ln out">├── bandit/              package bandit: the library</span><span class="ln out">    ├── rng.go           seeded random numbers</span><span class="ln out">    ├── env.go           the environment (the world)</span><span class="ln out">    ├── scenarios.go     named test beds (given)</span><span class="ln out">    ├── epsgreedy.go     the policy</span><span class="ln out">    ├── sim.go           the simulation loop</span><span class="ln out">    └── *_test.go        the tests for each file</span><span class="ln out">└── _extras/ch01/        extra tasks for this chapter</span></code></pre></figure>
 <p>The import path of the library package is the module path plus the directory: <code>banditlab/bandit</code>. Every file in <code>bandit/</code> starts with <code>package bandit</code>, and anything defined in one file is visible to the others without importing. Code outside the package can use only the names that start with a capital letter.</p>
 <aside class="callout py">
   <p class="callout-title">Go vs. Python</p>
   <p>Python packages are found by searching <code>sys.path</code>, and a directory becomes a package by convention or an <code>__init__.py</code>. In Go the module path in <code>go.mod</code> is the root of every import, and a package is exactly one directory. There is no search path to get wrong.</p>
 </aside>
-<p>Now see where you are. Run the tests in <code>ch01/start</code>:</p>
+<p>The files in <code>bandit/</code> other than <code>scenarios.go</code> are yours to finish. Now see where you are:</p>
 <!-- transcript: ch01/starter-tests -->
-<p>Everything compiles, and everything you have to write fails. The tests are the specification; read a failing one when a task is unclear.</p>
+<p>Everything compiles, and everything you have to write fails. The tests are the specification; read a failing one when a task is unclear. Run <code>go test ./...</code> as often as you like; the tasks below each name a narrower command that runs just their tests.</p>
 
 <h2>Random numbers you can reproduce</h2>
 <p>A simulation you cannot reproduce is a simulation you cannot debug, so randomness comes from generators we create and seed ourselves, never from the global one. <code>math/rand/v2</code> provides <code>rand.New(rand.NewPCG(seed1, seed2))</code>: a PCG generator, fast and statistically sound, that produces the same numbers for the same two seeds on every machine. <code>NewRNG</code> wraps this with a seed and a <em>stream</em> number. The environment and the policy each get their <em>own</em> generator, made from the same seed but different stream numbers. If they shared one, adding a single extra random draw to the policy would silently change every reward the environment produces, and comparing two policies on "the same" world would not be fair.</p>
@@ -48,7 +49,7 @@
 <details class="exercise" open>
   <summary>Task 1: <code>NewRNG</code></summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/rng.go#NewRNG -->
+<!-- include: ch01/files/bandit/rng.go#NewRNG -->
     <p>Right now every caller gets the same numbers, because the function ignores its arguments. Build the generator from <code>seed</code> and <code>stream</code> as described above. Two functions from <a href="https://pkg.go.dev/math/rand/v2">math/rand/v2</a> do it: <a href="https://pkg.go.dev/math/rand/v2#NewPCG"><code>rand.NewPCG(seed1, seed2 uint64) *PCG</code></a> creates the source of random bits from two 64-bit seeds, and <a href="https://pkg.go.dev/math/rand/v2#New"><code>rand.New(src Source) *Rand</code></a> wraps a source in a <a href="https://pkg.go.dev/math/rand/v2#Rand"><code>rand.Rand</code></a>, the type that has the methods for drawing numbers. Run <code>go test -run RNG ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p><code>rand.NewPCG</code> takes two <code>uint64</code> values and <code>rand.New</code> wraps the result in a generator. You already have exactly two numbers.</p>
@@ -66,7 +67,7 @@
 <details class="exercise" open>
   <summary>Task 2: <code>Env</code>, <code>NewEnv</code>, <code>NumArms</code>, <code>Prob</code></summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
+<!-- include: ch01/files/bandit/env.go#Env,NewEnv,Env.NumArms,Env.Prob -->
     <p>Give <code>Env</code> two fields, the probabilities and the generator. <code>NewEnv</code> fills them in and returns a pointer. <code>NumArms</code> and <code>Prob</code> read them. One requirement is not obvious: if the caller changes the slice they passed in afterwards, the environment must not change. Run <code>go test -run 'NumArms|Copies' ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the fields</summary>
     <p>Two fields are enough: the probabilities, a <code>[]float64</code>, and the generator, a <code>*rand.Rand</code>. <code>NumArms</code> is the length of the first, and <code>Prob</code> indexes it.</p>
@@ -88,7 +89,7 @@
 <details class="exercise" open>
   <summary>Task 3: <code>Env.Pull</code></summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/env.go#Env.Pull -->
+<!-- include: ch01/files/bandit/env.go#Env.Pull -->
     <p>Pulling an arm returns 1 with the arm's probability and 0 otherwise. The generator gives you a random number with <a href="https://pkg.go.dev/math/rand/v2#Rand.Float64"><code>(*rand.Rand).Float64() float64</code></a>: uniform in [0, 1), so <code>e.rng.Float64()</code>. Run <code>go test -run Pull ./bandit</code>. The tests check that rewards are only 0 or 1, that the long-run rate matches the probability, and that a seed gives the same sequence twice.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Compare the random number with the probability. A draw that falls below <code>probs[arm]</code> happens with exactly that probability.</p>
@@ -105,7 +106,7 @@
 <details class="exercise" open>
   <summary>Task 4: <code>Env.Best</code></summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/env.go#Env.Best -->
+<!-- include: ch01/files/bandit/env.go#Env.Best -->
     <p><code>Best</code> returns two values. Its results are <em>named</em> (<code>arm</code> and <code>p</code>), which declares them as variables at the top of the function, set to zero. Loop over the probabilities and keep the largest. If two arms tie, the first wins. Run <code>go test -run Best ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>The first arm is the best so far by default. After that, an arm replaces it only if its probability is strictly larger. A <code>for i, q := range e.probs</code> loop gives you both the index and the value, and <code>i == 0</code> is a convenient way to say "first".</p>
@@ -144,7 +145,7 @@
 <details class="exercise" open>
   <summary>Task 5: <code>Update</code>, the running mean</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.Update -->
+<!-- include: ch01/files/bandit/epsgreedy.go#EpsilonGreedy.Update -->
     <p>After a reward arrives, the arm's average must include it, without storing every reward. The primer's <code>RunningMean</code> exercise used this update rule: after <em>n</em> observations, <em>mean += (reward − mean) / n</em>. The tests read <code>counts[arm]</code> and <code>values[arm]</code> directly, so that is where the count and the mean must end up. Run <code>go test -run Update ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>Increment the arm's count first, then use the new count as <em>n</em>. Convert it with <code>float64(...)</code> before dividing.</p>
@@ -159,7 +160,7 @@
 <details class="exercise" open>
   <summary>Task 6: <code>greedy</code>, and ties</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
+<!-- include: ch01/files/bandit/epsgreedy.go#EpsilonGreedy.greedy -->
     <p>Return the arm with the highest mean. The subtle part: at the start every mean is 0, so <em>every arm ties</em>. Returning the first maximum would make the policy always try arm 0 first, and then keep choosing it until its mean falls below another arm's. Break ties evenly at random, using <a href="https://pkg.go.dev/math/rand/v2#Rand.IntN"><code>(*rand.Rand).IntN(n int) int</code></a>, which returns a random integer from 0 to n−1 (<code>p.rng.IntN(3)</code> is 0, 1 or 2). The lowercase name <code>greedy</code> means only this package can call it: it is an implementation detail. The tests set <code>p.values</code> directly and then call <code>greedy</code>, so decide from <code>p.values</code> alone. Run <code>go test -run Greedy ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>One pass over <code>p.values</code>, remembering the best index so far. Start with arm 0 as the best. Then think about what should happen when two values are exactly equal.</p>
@@ -180,7 +181,7 @@
 <details class="exercise" open>
   <summary>Task 7: <code>Select</code>, explore or exploit</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/epsgreedy.go#EpsilonGreedy.Select -->
+<!-- include: ch01/files/bandit/epsgreedy.go#EpsilonGreedy.Select -->
     <p>With probability <code>Epsilon</code>, return a uniformly random arm; otherwise return the greedy arm. You have both tools already: <code>p.rng.Float64()</code> compared with <code>p.Epsilon</code> decides whether to explore (as <code>Pull</code> did with a probability), and <code>p.rng.IntN(n)</code> picks the arm. Run <code>go test -run Select ./bandit</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch01/bandit/epsgreedy.go#EpsilonGreedy.Select -->
@@ -197,7 +198,7 @@
 <details class="exercise" open>
   <summary>Task 8: <code>Run</code></summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/sim.go#Run -->
+<!-- include: ch01/files/bandit/sim.go#Run -->
     <p>Write the loop. In each step: ask the policy for an arm, pull it, tell the policy what happened, and update the result. <code>res</code> needs its two slices allocated before you use them, with <code>make</code>. <code>for t := range steps</code> counts <code>t</code> from 0 to <code>steps-1</code>. Run <code>go test ./bandit</code>; when the last test passes, every task is done.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>Set up before the loop, then one loop with the same three calls every time: choose, observe, learn. The result's bookkeeping happens after those calls, inside the loop.</p>
@@ -231,8 +232,21 @@
 <div class="checkpoint">
 <p>When all eight tasks are done, these all succeed, with the output below. <code>gofmt -l .</code> lists files that are not formatted and should print nothing; <code>go vet</code> reports suspicious constructs; <code>-race</code> enables the race detector (nothing here is concurrent yet, but it is a good habit). Then <code>go run . -seed 7 -steps 1000</code> should match the last lines:</p>
 <!-- transcript: ch01/checkpoint -->
-<p>Test timings vary between machines; the simulation numbers do not. If a task will not come out right, <code>ch01/solution</code> has the finished chapter to compare with.</p>
+<p>Test timings vary between machines; the simulation numbers do not. If a task will not come out right, compare your code with <code>ch01/solution</code>, or copy it over your project as described at the top and read <code>git diff</code>.</p>
+<p>When everything passes, commit. The next chapter starts from this commit:</p>
+<figure class="term"><figcaption><span class="fname">from work/banditlab</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">git add -A</span><span class="ln cmd">git commit -m "Chapter 1: an epsilon-greedy simulation"</span></code></pre></figure>
 </div>
+
+<h2>What you learned</h2>
+<ul>
+  <li>A <strong>module</strong> is a tree of packages under one <code>go.mod</code>; a <strong>package</strong> is one directory; names that start with a capital letter are visible outside it.</li>
+  <li><strong>Structs</strong> hold state and <strong>methods</strong> with pointer receivers change it. A <code>NewX</code> function is the convention for building a ready-to-use value.</li>
+  <li>A <strong>slice</strong> is a view onto an array: <code>make</code> allocates one full of zeros, and <code>slices.Clone</code> copies one when ownership matters.</li>
+  <li>Functions return several values; results can be named; maps answer lookups with comma-ok.</li>
+  <li>Seeded generators from <code>math/rand/v2</code>, one stream per component, make a simulation reproducible.</li>
+  <li>The everyday loop is <code>go test</code>, <code>gofmt</code> and <code>go vet</code>, with <code>-race</code> once there is concurrency.</li>
+</ul>
 
 <h2>Try it</h2>
 <p>Before you run each of these, say what you expect. The point is to notice when the result surprises you.</p>
@@ -243,15 +257,15 @@
 </ul>
 
 <h2>Extra tasks</h2>
-<p>Three more, in the same project: <code>ch01/start/bandit/extras.go</code>. Nothing else uses them, so do them now or come back later. Their tests are in <code>extras_test.go</code> and fail until you write them.</p>
+<p>Three more, in <code>_extras/ch01/extras.go</code> with tests next to it. They live in a package of their own, under a directory whose name starts with an underscore, and the <code>go</code> command leaves such directories out of <code>./...</code>: your main suite stays green whether or not you do them. Run them with <code>go test ./_extras/ch01</code>. Nothing else uses them, so do them now or come back later.</p>
 
 <details class="exercise">
   <summary>Extra 1: empirical rates (zero values)</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/extras.go#EmpiricalRates -->
+<!-- include: ch01/files/_extras/ch01/extras.go#EmpiricalRates -->
     <p>Return each arm's success rate, <code>wins[i] / (wins[i] + losses[i])</code>. An arm that was never pulled has rate 0, not NaN. If the two slices differ in length, return <code>nil, false</code>.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch01/bandit/extras.go#EmpiricalRates -->
+<!-- include: ch01/_extras/ch01/extras.go#EmpiricalRates -->
     <p>Checking <code>n &gt; 0</code> before dividing is what prevents NaN. <code>rates</code> starts out zeroed, so the never-pulled case needs no code at all: not assigning is the answer.</p>
     </details>
   </div>
@@ -260,10 +274,10 @@
 <details class="exercise">
   <summary>Extra 2: reading the regret curve (maps and comma-ok)</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/extras.go#RegretAt -->
+<!-- include: ch01/files/_extras/ch01/extras.go#RegretAt -->
     <p>Given the per-step regret curve and a list of step counts (1-based, like the milestones <code>main</code> prints), return a map from each mark to its regret. If any mark is out of range, return <code>nil, false</code>. Create the map with <code>make(map[int]float64)</code> (the primer used a map literal; <code>make</code> is the way to get an empty one), set entries with <code>m[key] = value</code>, and loop over the marks with <code>for _, mark := range marks</code>.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch01/bandit/extras.go#RegretAt -->
+<!-- include: ch01/_extras/ch01/extras.go#RegretAt -->
     <p>The map is created with <code>make</code> and a size hint. Reading the mark <code>m</code> as a one-based index means subtracting one, which is the classic off-by-one; the test pins it down.</p>
     </details>
   </div>
@@ -272,10 +286,10 @@
 <details class="exercise">
   <summary>Extra 3: decaying epsilon</summary>
   <div class="ex-body">
-<!-- include: ch01/start/bandit/extras.go#DecayedEpsilon -->
+<!-- include: ch01/files/_extras/ch01/extras.go#DecayedEpsilon -->
     <p>Fixed ε keeps wasting pulls long after the best arm is obvious. Write the function the comment describes: an exploration rate that halves every <code>halfLife</code> steps but never drops below <code>floor</code>. Two functions from the <a href="https://pkg.go.dev/math">math</a> package help: <a href="https://pkg.go.dev/math#Pow"><code>math.Pow(x, y float64) float64</code></a> is x<sup>y</sup>, and <a href="https://pkg.go.dev/math#Max"><code>math.Max(x, y float64) float64</code></a> is the larger of two numbers. Both take and return <code>float64</code>, so convert integers first. Then, as an extension with no provided test, make <code>EpsilonGreedy.Select</code> use it and compare regret on the <code>easy</code> scenario.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch01/bandit/extras.go#DecayedEpsilon -->
+<!-- include: ch01/_extras/ch01/extras.go#DecayedEpsilon -->
     <p><code>math.Pow</code> and <code>math.Max</code> operate on <code>float64</code> only, so the step count is converted explicitly: Go never converts between numeric types implicitly, even <code>int</code> to <code>float64</code>.</p>
     </details>
   </div>

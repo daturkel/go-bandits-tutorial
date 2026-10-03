@@ -521,7 +521,7 @@ func (b *builder) renderCopy(spec string) (string, error) {
 }
 
 // startRE matches an include of a chapter's starter: ch01/start/...
-var startRE = regexp.MustCompile(`^ch\d+/start/`)
+var startRE = regexp.MustCompile(`^ch\d+/files/`)
 
 // solutionDir is where a chapter's reference solution lives: <chapter>/solution
 // for chapters converted to the start/solution layout, solutions/<chapter> for

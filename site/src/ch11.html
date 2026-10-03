@@ -81,7 +81,7 @@
 <p>A test proves the difference. The server is given a 50 ms service time and two workers, so its capacity is about 40 requests a second; the generator offers 200 a second. An open-loop test must show large latencies:</p>
 <!-- include: ch11/internal/load/load_test.go#TestOpenLoopExposesQueueing -->
 <p>Which mode to use depends on the question. Closed loop asks "how much can this handle?" (find the saturation point). Open loop asks "what will users experience at N requests per second?" (measure latency at a load you choose).</p>
-<p>The remaining functions turn the raw measurements into the report. Percentiles come from <code>stat.Quantile</code>, which you may recognise as chapter 4's exercise 2:</p>
+<p>The remaining functions turn the raw measurements into the report. Percentiles come from <code>stat.Quantile</code>, which you may recognise from chapter 4's second extra task:</p>
 <!-- include: ch11/internal/stat/stat.go#Quantile diff -->
 <!-- include: ch11/internal/load/load.go#selectArm,sendReward,merge,Stats.fill,Report.Write,round -->
 <!-- include: ch11/cmd/banditload/main.go -->

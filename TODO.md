@@ -28,7 +28,7 @@
 
 ## Deferred
 
-- **Convert chapters 5 to 14 and the capstone to the starter format** (primer and chapters 1 to 4 are done). Each needs a `chNN/start` and a `chNN/solution` directory (moved from `solutions/chNN`), in-flow tasks with tests, a rewritten page, and the "Go in this chapter" introduction; blanks should grow with the reader. Chapters 13 and 14 and the capstone are mostly infrastructure and would change least. Decide after reviewing the pilot. The old separate exercises (still in exercises/chNN for chapters 5 to 14) should be folded into the project as extra tasks, the way chapters 1 to 4 now do.
+- **Convert chapters 5 to 14 and the capstone to the own-project format** (primer and chapters 1 to 4 are done; see "How the course works" in `CLAUDE.md`). Each needs a `chNN/files` and a cumulative `chNN/solution` (moved from `solutions/chNN`, with the stronger chapter 1 to 4 tests carried forward), tasks for every file the reader edits, a rewritten page, and its old `exercises/chNN` folded in as `_extras/chNN`. Scaffolding should fade: specs and signatures in Part II, contracts and HTTP/gRPC tests in Parts III and IV, infrastructure given. Consider splitting chapter 13 (ten steps, three services). When done, remove `solutions/`, `exercises/`, `tools/check.sh`, `tools/start.sh` and `tools/check_exercises.sh`.
 
 - **GitHub Actions CI** (not started). The Pages workflow only rebuilds the site and deploys it. A CI workflow should run on every push and pull request:
   - per chapter in `solutions/`: `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./...`, `go test -race ./...`, with a PostgreSQL service container and `BANDIT_TEST_DATABASE_URL` set so the database tests run instead of skipping;

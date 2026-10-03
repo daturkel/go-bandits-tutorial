@@ -1,6 +1,7 @@
 <h2>What you will build</h2>
 <p>A <code>Policy</code> interface that lets the simulation run <em>any</em> selection strategy, and a second strategy, UCB1, that plugs into it without changing a line of the runner. Along the way you meet the three ideas that make Go code reusable without inheritance: interfaces, embedding, and the choice between value and pointer receivers.</p>
-<p>The result: <code>go run . -policy epsgreedy,ucb1</code> compares two policies on identical conditions in one table.</p>
+<p>When you have finished, <code>go run .</code> compares two policies on identical conditions in one table:</p>
+<!-- transcript: ch02/run -->
 
 <h2>The Go in this chapter</h2>
 <ul>
@@ -11,24 +12,36 @@
   <li><strong>Mentioned, explained in chapter 3:</strong> the <code>error</code> in <code>NewPolicy</code>'s return, and the typed-nil trap.</li>
 </ul>
 
-<h2>Your starter</h2>
-<p>Work in <code>ch02/start</code>. It is chapter 1's finished project, with one refactoring already done for you (the shared bookkeeping, under "Sharing bookkeeping with embedding" below) and three tasks left. Try the tests:</p>
+<h2>Bring in this chapter's files</h2>
+<p>From your project, copy this chapter's files in and look at what changed:</p>
+<!-- transcript: ch02/copy-in -->
+<p>The new files are <code>stats.go</code> (complete, explained below), <code>policy.go</code> and <code>ucb1.go</code> (with tasks), this chapter's extras, and a small example program. <code>main.go</code> is replaced by a version that compares several policies, and several test files are replaced by versions that test this chapter. <code>sim.go</code> and <code>epsgreedy.go</code> are yours to change, and two of the tasks do that.</p>
+<p>Now try to build everything:</p>
 <!-- transcript: ch02/starter-tests -->
-<p>Those errors are the first job. <code>Run</code> in <code>sim.go</code> now takes a <code>Policy</code> instead of a specific policy type, but nothing says yet what a <code>Policy</code> is.</p>
+<p>Nothing compiles, and that is expected: the new tests and the new <code>main.go</code> already use what this chapter builds. The first three tasks make the project compile again, and these errors are their to-do list (the compiler stops at ten per package, so more appear as you fix these). Read them as "the tests expect a <code>Policy</code> with methods, a <code>Run</code> that takes one, and an <code>EpsilonGreedy</code> with <code>means</code>, <code>total</code> and <code>Name</code>".</p>
 
 <h2>Interfaces: what a policy is</h2>
-<p>Chapter 1's <code>Run</code> took a <code>*EpsilonGreedy</code>. To run something else, the runner has to say what it <em>needs</em> from a policy, not which type it is. That change is already made in the starter; it is one word, plus a line that records the policy's name:</p>
-<!-- include: ch02/bandit/sim.go#Result,Run diff -->
-<p>An <strong>interface</strong> is a set of method signatures. Look at what <code>Run</code> calls on <code>pol</code>: <code>Name</code>, <code>Select</code> and <code>Update</code>. That list <em>is</em> the interface.</p>
+<p>Chapter 1's <code>Run</code> took a <code>*EpsilonGreedy</code>. To run something else, the runner has to say what it <em>needs</em> from a policy, not which type it is. An <strong>interface</strong> is a set of method signatures: a type that has all of them satisfies the interface, with nothing else to declare. Look at what <code>Run</code> calls on <code>pol</code>: <code>Select</code> and <code>Update</code>. Add <code>Name</code>, so that results can be labelled, and that list <em>is</em> the interface.</p>
 
 <details class="exercise" open>
   <summary>Task 1: define <code>Policy</code></summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/policy.go#Policy -->
-    <p>Fill in the three methods. Their signatures are the ones <code>EpsilonGreedy</code> already has (<code>Select() int</code>, <code>Update(arm int, reward float64)</code>) plus <code>Name() string</code>, which the runner uses to label results. When the package compiles again, run the tests: the ones about policies still fail, and the next two tasks fix them.</p>
+<!-- include: ch02/files/bandit/policy.go#Policy -->
+    <p>An interface lists methods without receivers and without bodies: <code>Select() int</code>, <code>Update(arm int, reward float64)</code> and <code>Name() string</code>, one per line between the braces.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/policy.go#Policy -->
-    <p>Nothing in <code>EpsilonGreedy</code>'s source says it implements <code>Policy</code>. It has these methods, so it does. The doc comment says so because the compiler will not.</p>
+    <p>Nothing in <code>EpsilonGreedy</code>'s source will ever say it implements <code>Policy</code>. Once it has these methods (after task 3), it does. The doc comment says so because the compiler will not.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise" open>
+  <summary>Task 2: make <code>Run</code> take any <code>Policy</code></summary>
+  <div class="ex-body">
+    <p>In your <code>sim.go</code>, change <code>Run</code>'s parameter from <code>pol *EpsilonGreedy</code> to <code>pol Policy</code>. Then add a first field <code>Policy string</code> to <code>Result</code>, and set it to <code>pol.Name()</code> where <code>Run</code> builds the result, so every result says which policy produced it. Nothing else in <code>Run</code> changes: it only ever called methods that are now in the interface.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch02/bandit/sim.go#Result,Run diff -->
+    <p>The highlighted lines are the whole change. That is the payoff of an interface: the loop body is untouched, and from now on any type with the three methods can be simulated.</p>
     </details>
   </div>
 </details>
@@ -42,18 +55,38 @@
 <!-- include: ch02/bandit/policy_test.go lines=10-14 -->
 
 <h2>Sharing bookkeeping with embedding</h2>
-<p>Every policy needs per-arm pull counts and running means. Rather than copy that into UCB1, the starter pulls it into a small type, which is given:</p>
+<p>Every policy needs per-arm pull counts and running means. Rather than copy that into UCB1, it lives in a small type of its own, which this chapter's files give you:</p>
 <!-- include: ch02/bandit/stats.go diff -->
-<p>and <code>EpsilonGreedy</code> <strong>embeds</strong> it: a field with a type but no name. Compare with chapter 1:</p>
+<p><code>Update</code> is your chapter 1 update rule, moved here, and <code>values</code> is now called <code>means</code>. <code>EpsilonGreedy</code> should use this type instead of its own two slices, and Go's tool for that is <strong>embedding</strong>: a struct field with a type but no name.</p>
+<figure class="term"><figcaption><span class="fname">embedding, in general</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">type Outer struct {</span><span class="ln out">    inner        // embedded: no field name, just the type</span><span class="ln out">    Other string</span><span class="ln out">}</span></code></pre></figure>
+<p>Embedding <strong>promotes</strong> the embedded type's fields and methods, so if <code>inner</code> has a field <code>x</code> and a method <code>M</code>, then <code>o.x</code> and <code>o.M()</code> work directly on an <code>Outer</code>. The embedded field still has a name, the type's name (<code>o.inner</code>), and a composite literal sets it by that name: <code>Outer{inner: newInner(), Other: "a"}</code>.</p>
+
+<details class="exercise" open>
+  <summary>Task 3: rebuild <code>EpsilonGreedy</code> on <code>armStats</code></summary>
+  <div class="ex-body">
+    <p>In your <code>epsgreedy.go</code>:</p>
+    <ul>
+      <li>Replace the <code>counts</code> and <code>values</code> fields with an embedded <code>armStats</code>, and build it in <code>NewEpsilonGreedy</code> with <code>newArmStats(nArms)</code>.</li>
+      <li>Delete your <code>Update</code> method: the promoted one from <code>armStats</code> takes its place.</li>
+      <li>In <code>Select</code> and <code>greedy</code>, <code>p.values</code> becomes <code>p.means</code>.</li>
+      <li>Add <code>Name() string</code>, returning for example <code>epsilon-greedy(0.10)</code> for ε = 0.1. <a href="https://pkg.go.dev/fmt#Sprintf"><code>fmt.Sprintf(format string, a ...any) string</code></a> formats like <code>Printf</code> but returns the string; the verb <code>%.2f</code> prints a float with two decimals. Add <code>"fmt"</code> to the imports.</li>
+    </ul>
+    <p>After this task <code>go test ./...</code> gets past compiling. Run <code>go test ./bandit</code>: the tests for chapter 1's behaviour pass again. What still fails is UCB1 and <code>NewPolicy</code>, the next two tasks, and the simulation tests, which build their policies through <code>NewPolicy</code>.</p>
+    <details class="answer"><summary>Answer</summary>
 <!-- include: ch02/bandit/epsgreedy.go diff -->
-<p>The <code>values</code> slice is gone, replaced by <code>armStats.means</code>, so <code>Select</code> and <code>greedy</code> change only in that name. The <code>Name</code> method is new, and <code>Update</code> has moved into <code>armStats</code>.</p>
-<p>Embedding <strong>promotes</strong> the embedded type's fields and methods, so <code>p.means</code>, <code>p.counts</code> and <code>p.Update(arm, r)</code> all work directly on an <code>EpsilonGreedy</code>. The type <code>armStats</code> starts with a lowercase letter, so it is invisible outside the package, but its <em>exported</em> method <code>Update</code> is still promoted onto the exported <code>EpsilonGreedy</code>, and callers can use it.</p>
-<p>It looks like inheritance, but it is composition: <code>armStats</code> is an ordinary field (it even has a name, <code>armStats</code>, that you can use to reach it), and the promoted method runs with <code>armStats</code> as its receiver. It cannot see the outer type, and there is no <code>super</code> and no virtual dispatch back into the outer type. If you need to override, you define a method with the same name on the outer type, as exercise 2 at the end does.</p>
+    <p>Your <code>greedy</code> may look different from this one; that is fine, as long as it passes the same tests.</p>
+    </details>
+  </div>
+</details>
+
+<p>The type <code>armStats</code> starts with a lowercase letter, so it is invisible outside the package, but its <em>exported</em> method <code>Update</code> is still promoted onto the exported <code>EpsilonGreedy</code>, and callers can use it.</p>
+<p>It looks like inheritance, but it is composition: <code>armStats</code> is an ordinary field, and the promoted method runs with <code>armStats</code> as its receiver. It cannot see the outer type, and there is no <code>super</code> and no virtual dispatch back into the outer type. If you need to override, you define a method with the same name on the outer type, as extra 2 at the end does.</p>
 
 <h2>Value or pointer receivers</h2>
 <p>So far every method has a pointer receiver, <code>(p *EpsilonGreedy)</code>. With interfaces in play the choice has a visible consequence. Before you run this program, decide whether you think it compiles:</p>
-<!-- include: ch02/_examples/valuereceiver.go title="_examples/valuereceiver.go" -->
-<p>Run it with <code>go run ./_examples</code>:</p>
+<!-- include: ch02/_examples/valuereceiver/main.go title="_examples/valuereceiver/main.go" -->
+<p>Run it with <code>go run ./_examples/valuereceiver</code>:</p>
 <!-- transcript: ch02/value-receiver -->
 <p>The compiler is telling you about <strong>method sets</strong>. The method set of a type <code>T</code> contains the methods with receiver <code>T</code>; the method set of <code>*T</code> contains methods with receiver <code>T</code> <em>and</em> <code>*T</code>. Since <code>Select</code>, <code>Name</code> and (via <code>armStats</code>) <code>Update</code> are declared on pointers, only <code>*EpsilonGreedy</code> satisfies <code>Policy</code>. That is not pedantry. If a value could be stored in an interface, each method call would operate on a copy and <code>Update</code> would change a copy that is immediately thrown away. Go refuses to let you write that bug quietly.</p>
 <p>Which receiver to choose:</p>
@@ -75,9 +108,9 @@
 <!-- include: ch02/bandit/ucb1.go#UCB1,NewUCB1,UCB1.Name -->
 
 <details class="exercise" open>
-  <summary>Task 2: <code>UCB1.Select</code></summary>
+  <summary>Task 4: <code>UCB1.Select</code></summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/ucb1.go#UCB1.Select -->
+<!-- include: ch02/files/bandit/ucb1.go#UCB1.Select -->
     <p>Write it as the comment says. The tests set <code>counts</code>, <code>means</code> and <code>total</code> directly and then call <code>Select</code>, so it must read exactly those and change nothing. You will need three functions from the <a href="https://pkg.go.dev/math">math</a> package, so add <code>import "math"</code>: <a href="https://pkg.go.dev/math#Sqrt"><code>math.Sqrt(x float64) float64</code></a> (square root), <a href="https://pkg.go.dev/math#Log"><code>math.Log(x float64) float64</code></a> (natural logarithm) and <a href="https://pkg.go.dev/math#Inf"><code>math.Inf(sign int) float64</code></a>, which returns positive infinity for a positive <code>sign</code> and negative infinity for a negative one (<code>math.Inf(-1)</code> is a starting value that any real score beats). All work on <code>float64</code>, so convert integer counts first. Go does not let an unused variable or import go unnoticed, so the compiler will tell you if you forget one or leave one behind. Run <code>go test -run UCB1 ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>Two passes over the arms. The first handles arms that have never been pulled, since the formula divides by the count. The second picks the best score.</p>
@@ -100,9 +133,9 @@
 <!-- include: ch02/bandit/policy.go#PolicyNames -->
 
 <details class="exercise" open>
-  <summary>Task 3: <code>NewPolicy</code></summary>
+  <summary>Task 5: <code>NewPolicy</code></summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/policy.go#NewPolicy -->
+<!-- include: ch02/files/bandit/policy.go#NewPolicy -->
     <p>A <code>switch name { case "epsgreedy": ... case "ucb1": ... default: ... }</code> on <code>name</code>, each branch ending in a <code>return</code>. The constructors to call are <code>NewEpsilonGreedy(nArms, epsilon, rng)</code> and <code>NewUCB1(nArms)</code>; both return a pointer, which satisfies <code>Policy</code>. The function returns the interface type, so callers get a <code>Policy</code> whichever branch ran. It also returns an <code>error</code>: return <code>nil</code> for it on success, and <code>fmt.Errorf("unknown policy %q", name)</code> for a name you do not know (the <code>%q</code> verb prints a string in double quotes). Chapter 3 covers Go's error handling properly. Run the whole suite with <code>go test ./...</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p>On failure, return a plain <code>nil</code> as the first value, not a typed nil such as <code>(*UCB1)(nil)</code>. The test checks this, and the answer explains why.</p>
@@ -115,9 +148,8 @@
 </details>
 
 <h2>The command line</h2>
-<p><code>main.go</code> is given. It accepts a comma-separated list of policies, gives every policy its own identically seeded environment, and prints one row each:</p>
+<p><code>main.go</code> came with this chapter's files. It accepts a comma-separated list of policies, gives every policy its own identically seeded environment, and prints one row each. Its output is the table at the top of this page:</p>
 <!-- include: ch02/main.go#main diff -->
-<!-- transcript: ch02/run -->
 <p>Same environment, same seed. Epsilon-greedy's regret is 304 (almost all of it the fixed cost of exploring 10% of the time, as chapter 1 computed), while UCB1 gets to 71 because its exploration fades as its estimates firm up. On a harder problem with eight arms, UCB1 alone:</p>
 <!-- transcript: ch02/run-one -->
 <p>It concentrates 18,452 of 20,000 pulls on the best arm but keeps sampling the runners-up (735 and 411 pulls), as a confidence bound should when the second-best arm is only 0.10 worse.</p>
@@ -126,8 +158,20 @@
 <div class="checkpoint">
 <p>All tasks done: these succeed, and the last command should match the output below.</p>
 <!-- transcript: ch02/checkpoint -->
-<p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one. If you get stuck, <code>ch02/solution</code> has the finished chapter to compare with.</p>
+<p>The two policies' numbers match the table above; at 1,000 steps with seed 7, epsilon-greedy is actually ahead (36.3 vs. 46.5 regret) because UCB1 pays for its initial tour of the arms. Which policy wins depends on the horizon, which is why chapter 4 builds a harness that averages over many seeds instead of trusting one. If you get stuck, compare with <code>ch02/solution</code>, or copy it over your project and read <code>git diff</code>.</p>
+<p>Then commit:</p>
+<figure class="term"><figcaption><span class="fname">from work/banditlab</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">git add -A</span><span class="ln cmd">git commit -m "Chapter 2: a Policy interface and UCB1"</span></code></pre></figure>
 </div>
+
+<h2>What you learned</h2>
+<ul>
+  <li>An <strong>interface</strong> is a set of methods, satisfied implicitly. Define it where it is used, keep it small, and accept interfaces while returning concrete types.</li>
+  <li>A compile-time assertion, <code>var _ Policy = (*UCB1)(nil)</code>, catches a type that stops satisfying one.</li>
+  <li><strong>Embedding</strong> promotes an inner type's fields and methods. It is composition, not inheritance: there is no <code>super</code> and no virtual dispatch.</li>
+  <li><strong>Method sets</strong>: methods with pointer receivers belong only to the pointer type, so only <code>*T</code> satisfies the interface.</li>
+  <li>Changing a signature and following the compiler to every caller is an ordinary way to refactor Go.</li>
+</ul>
 
 <h2>Try it</h2>
 <ul>
@@ -136,15 +180,15 @@
 </ul>
 
 <h2>Extra tasks</h2>
-<p>Three more, in the same project: <code>ch02/start/bandit/extras.go</code>, with tests in <code>extras_test.go</code>. Nothing else uses them, so do them now or come back later. They are the practice for this chapter's ideas: implementing an interface, embedding, and receivers.</p>
+<p>Three more, in <code>_extras/ch02/extras.go</code> with tests next to it; run them with <code>go test ./_extras/ch02</code>. They are the practice for this chapter's ideas: implementing an interface, embedding, and receivers. They are in their own package, so they refer to the interface as <code>bandit.Policy</code>.</p>
 
 <details class="exercise">
   <summary>Extra 1: a round-robin baseline</summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
+<!-- include: ch02/files/_extras/ch02/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
     <p>Make <code>RoundRobin</code> a policy that pulls arms 0, 1, 2, ..., n-1, 0, ... and ignores rewards. Any learning policy should beat this baseline. Keep a counter of the next arm in the struct; the remainder operator <code>%</code> wraps it back to 0 (<code>5 % 3</code> is <code>2</code>, <code>3 % 3</code> is <code>0</code>). The test has a compile-time assertion that <code>*RoundRobin</code> satisfies <code>Policy</code>; you should know why it is there.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch02/bandit/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
+<!-- include: ch02/_extras/ch02/extras.go#RoundRobin,NewRoundRobin,RoundRobin.Name,RoundRobin.Select,RoundRobin.Update -->
     <p>The receiver is a pointer because <code>Select</code> advances <code>next</code>. The modulo keeps the cycle in range without a branch. It is not added to <code>NewPolicy</code>: the tests that loop over <code>PolicyNames()</code> expect policies that learn.</p>
     </details>
   </div>
@@ -153,10 +197,10 @@
 <details class="exercise">
   <summary>Extra 2: a logging wrapper via embedding</summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/extras.go#Logged,NewLogged -->
+<!-- include: ch02/files/_extras/ch02/extras.go#Logged,NewLogged -->
     <p><code>Logged</code> embeds a <code>Policy</code>, so it already has all three methods. Override <code>Select</code> and <code>Update</code> so they record <code>"select 2"</code> and <code>"update 1 1"</code>-style lines in <code>Log</code> (arm, then reward printed with <code>%g</code>) and then call the embedded policy. <code>Name</code> needs no code. To build the text, <a href="https://pkg.go.dev/fmt#Sprintf"><code>fmt.Sprintf(format string, a ...any) string</code></a> formats like <code>Printf</code> but returns the string instead of printing it: <code>%d</code> prints an integer and <code>%g</code> a float in its shortest form, so <code>fmt.Sprintf("update %d %g", 1, 1.0)</code> is <code>"update 1 1"</code>. The methods are declared like any others, with the pointer receiver <code>(l *Logged)</code>, and <code>l.Policy</code> is the embedded value.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch02/bandit/extras.go#Logged,NewLogged,Logged.Select,Logged.Update -->
+<!-- include: ch02/_extras/ch02/extras.go#Logged,NewLogged,Logged.Select,Logged.Update -->
     <p>Inside an overriding method you reach the embedded value by its type name, <code>l.Policy.Select()</code>. Without that qualifier the method would call itself forever. The wrapper still satisfies <code>Policy</code>, so <code>Run</code> accepts it with no change: this is how middleware is built in Go.</p>
     </details>
   </div>
@@ -165,10 +209,10 @@
 <details class="exercise">
   <summary>Extra 3: find the receiver bug</summary>
   <div class="ex-body">
-<!-- include: ch02/start/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
+<!-- include: ch02/files/_extras/ch02/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
     <p>The tests fail even though every method looks reasonable. Find the bug and fix it without changing the tests. It fails in an interesting way: one of the two checks passes.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch02/bandit/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
+<!-- include: ch02/_extras/ch02/extras.go#Tally,NewTally,Tally.Add,Tally.Total,Tally.Count -->
     <p>The methods have value receivers, so each call works on a copy of the <code>Tally</code>. The slice inside the copy shares its array with the original, so <code>counts[arm]++</code> still lands; the <code>total</code> field is a plain integer, so <code>total++</code> changes the copy and is lost. Pointer receivers, and a constructor that returns a pointer, fix both. Once the methods have pointer receivers, only <code>*Tally</code> has them in its method set, which is why <code>NewTally</code> must return a pointer for the interface test to compile: the rule from the receivers section again.</p>
     </details>
   </div>

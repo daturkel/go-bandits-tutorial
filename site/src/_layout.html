@@ -42,7 +42,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 <aside class="callout note start">
   <p class="callout-title">Starting point</p>
   {{if .Chapter.Start}}<p>{{.Chapter.StartHTML}}</p>
-  {{else if .Chapter.Starter}}<p>Work in <code>{{.Chapter.ID}}/start</code> in your clone of the repository. It is the previous chapter's finished project with the parts you will write left out, so every chapter begins from a project known to work. Run <code>go test ./...</code> there to see what is missing. To start over, <code>git restore {{.Chapter.ID}}/start</code>; to keep the original untouched, copy the folder somewhere else first.</p>
+  {{else if .Chapter.Starter}}<p>Your project from {{.Prev.Label}}, in <code>work/banditlab</code>. From there, copy this chapter's files in: <code>cp -R ../../{{.Chapter.ID}}/files/. .</code> If you are behind or starting here, first run <code>cp -R ../../{{.Prev.ID}}/solution/. .</code> to get the end of {{.Prev.Label}}.</p>
   {{else if .Prev}}<p>Your own project as it stood at the end of {{.Prev.Label}}. If yours has drifted, or you are skipping ahead, <code>tools/start.sh {{.Prev.ID}} work/banditlab</code> copies the reference version into a new directory.</p>
   {{else}}<p>An empty directory. The commands in this course assume <code>work/banditlab</code> inside your clone of the repository (git ignores <code>work/</code>), but anywhere works.</p>{{end}}
 </aside>

@@ -1,5 +1,7 @@
 <h2>What you will build</h2>
 <p>Chapter 2 left failure modes open: a probability of 1.7 is accepted, an unknown scenario comes back as a bare <code>false</code>, and a misbehaving policy crashes the runner with an index error. This chapter turns each into an explicit, testable <code>error</code>, then puts a real test suite around the simulator: table-driven tests, a golden-file test for the command line's output, and a benchmark that says what one policy step costs.</p>
+<p>When you have finished, mistakes are reported clearly instead of crashing or being silently accepted:</p>
+<!-- transcript: ch03/errors -->
 
 <h2>The Go in this chapter</h2>
 <ul>
@@ -10,10 +12,13 @@
   <li><strong>Testing.</strong> The <code>testing</code> package, table-driven tests and subtests, golden files, benchmarks with <code>b.Loop</code>, coverage, <code>gofmt</code> and <code>go vet</code>.</li>
 </ul>
 
-<h2>Your starter</h2>
-<p>Work in <code>ch03/start</code>. It is chapter 2's project with the new signatures in place (constructors return an <code>error</code> too, <code>Run</code> returns <code>(Result, error)</code>, <code>main</code> is already restructured) but none of the checking. Eight tasks fill it in. Run the first tests:</p>
+<h2>Bring in this chapter's files</h2>
+<p>From your project:</p>
+<!-- transcript: ch03/copy-in -->
+<p>New: <code>errors.go</code>, the project's error vocabulary, with one task in it; two test files you write yourself (tasks 8 and 9); a golden file and its test for the command's output; two example programs; and the extras. Replaced: <code>main.go</code>, now restructured so that it can be tested, and the test files. Everything else this chapter changes is code you wrote, and the tasks say where.</p>
+<p>As in chapter 2, nothing compiles yet:</p>
 <!-- transcript: ch03/starter-tests -->
-<p>Everything compiles; the tests fail because the checks are missing. That is the <code>ArmError</code> tests only; the full suite fails in several more places, and a couple of the failures are panics, because the code has nothing to stop bad input yet. Each task below turns some of them green.</p>
+<p>The errors all say the same thing in different places: the tests and <code>main.go</code> expect functions that can fail to return an <code>error</code>. That is the first task, after a look at what an error is in Go.</p>
 
 <h2>Errors are values</h2>
 <p>Go has no exceptions. A function that can fail returns an <code>error</code> as its last result, and the caller decides what to do on the very next line:</p>
@@ -24,13 +29,38 @@
   <p class="callout-title">Go vs. Python</p>
   <p>In Python an exception unwinds the stack until something catches it, and any line can raise. In Go, control flow is visible: every place that can fail says so in its signature, and every caller writes down what happens. It is more typing, but reading a function shows all of its exits. Unwinding exists (<code>panic</code> and <code>recover</code>) but is reserved for bugs. If a caller could reasonably cause the failure, return an error; if only a programmer mistake could, panic.</p>
 </aside>
+<h2>Functions that can fail say so</h2>
+<p>Several functions in your project can be handed nonsense: a probability of 1.7, a scenario name that does not exist, a policy that picks arm 99. From this chapter on, each of them reports it by returning an <code>error</code> as an extra, last result. Changing a signature in Go is mechanical but not automatic: every caller stops compiling until it handles the new result, and the compiler lists every one of them. That list is how Go refactors are usually done.</p>
+
+<details class="exercise" open>
+  <summary>Task 1: the new signatures</summary>
+  <div class="ex-body">
+    <p>Change these functions in your code to the signatures below. Do not add any checking yet: every new <code>error</code> result is <code>nil</code> for now, and the tasks after this one fill in when it is not.</p>
+<figure class="term"><figcaption><span class="fname">the signatures after this task</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">func NewEnv(probs []float64, rng *rand.Rand) (*Env, error)                           // env.go</span><span class="ln out">func Scenario(name string) ([]float64, error)                                         // scenarios.go</span><span class="ln out">func NewEpsilonGreedy(nArms int, epsilon float64, rng *rand.Rand) (*EpsilonGreedy, error)</span><span class="ln out">func NewUCB1(nArms int) (*UCB1, error)</span><span class="ln out">func NewPolicy(spec string, nArms int, rng *rand.Rand) (Policy, error)                 // policy.go</span><span class="ln out">func Run(env *Env, pol Policy, steps int) (Result, error)                              // sim.go</span></code></pre></figure>
+    <p>Two of them change more than their results:</p>
+    <ul>
+      <li><code>Scenario</code> returned <code>([]float64, bool)</code>; the <code>bool</code> becomes an <code>error</code>. For now, return the probabilities and <code>nil</code> (an unknown name gives a nil slice, as before). Task 4 makes an unknown name an error.</li>
+      <li><code>NewPolicy</code> loses its <code>epsilon</code> parameter, because the first argument becomes a <em>spec</em> that can carry it, as in <code>epsgreedy:0.05</code>. Task 6 parses specs. Until then, add <code>const defaultEpsilon = 0.1</code> to <code>policy.go</code> and pass that.</li>
+    </ul>
+    <p>Then follow the compiler. <code>go test ./...</code> lists the callers that no longer compile; the ones in your code are inside <code>NewPolicy</code>, which calls the two constructors. When it gets past compiling, the remaining failures are the checks the next tasks add. Two of them are panics: an unknown scenario now yields an empty environment, and a misbehaving test policy indexes past the end of a slice. A panic stops the rest of that package's tests, so a few failures only show up once tasks 4 and 7 are done.</p>
+    <details class="answer"><summary>Hint: calling a constructor that can fail</summary>
+    <p>A call that returns two values is received with two variables, and the error is checked straight away:</p>
+<figure class="term"><figcaption><span class="fname">inside NewPolicy</span></figcaption>
+<pre tabindex="0"><code><span class="ln out">case "ucb1":</span><span class="ln out">    p, err := NewUCB1(nArms)</span><span class="ln out">    if err != nil {</span><span class="ln out">        return nil, err</span><span class="ln out">    }</span><span class="ln out">    return p, nil</span></code></pre></figure>
+    <p>It looks longer than it needs to be. <code>return NewUCB1(nArms)</code> would compile, and it would be a bug; task 6 shows why.</p>
+    </details>
+  </div>
+</details>
+
+<h2>Sentinels and error types</h2>
 <p>The error vocabulary for the project lives in <code>errors.go</code>. The sentinels and the type are given; two methods are yours.</p>
 
 <details class="exercise" open>
-  <summary>Task 1: make <code>ArmError</code> an error that unwraps</summary>
+  <summary>Task 2: make <code>ArmError</code> an error that unwraps</summary>
   <div class="ex-body">
 <!-- include: ch03/bandit/errors.go lines=8-24 -->
-<!-- include: ch03/start/bandit/errors.go#ArmError.Error,ArmError.Unwrap -->
+<!-- include: ch03/files/bandit/errors.go#ArmError.Error,ArmError.Unwrap -->
     <p>There are two kinds of error here. <strong>Sentinels</strong> like <code>ErrNoArms</code> are package-level values made with <a href="https://pkg.go.dev/errors#New"><code>errors.New(text string) error</code></a>; they answer "<em>what</em> went wrong?" and callers compare against them with <code>errors.Is</code>. <strong>Error types</strong> like <code>ArmError</code> carry data; they answer "<em>where</em>, or <em>with what</em>?" and callers extract them with <code>errors.As</code>.</p>
     <p>Implement <code>Error</code> so the text reads <code>arm 3: at least one arm is required</code> (arm index, then the wrapped error's own message). Build the text with <a href="https://pkg.go.dev/fmt#Sprintf"><code>fmt.Sprintf(format string, a ...any) string</code></a>, and add <code>"fmt"</code> to the imports. The format string has a verb for each argument, and the ones this chapter uses are <code>%d</code> (an integer), <code>%s</code> (a string), <code>%q</code> (a string in double quotes), <code>%v</code> (any value in its default form; an error prints as its message) and <code>%w</code> (for <code>fmt.Errorf</code> only: like <code>%v</code> for an error, but it also wraps it). Write <code>Unwrap</code> so it returns the wrapped error. <code>Unwrap</code> is what links an outer error to the one inside it: it is why <code>errors.Is(err, ErrInvalidProbability)</code> can see through an <code>ArmError</code>. Run <code>go test -run ArmError ./bandit</code>.</p>
     <details class="answer"><summary>Answer</summary>
@@ -42,10 +72,14 @@
 
 <h2>Validating the environment</h2>
 <details class="exercise" open>
-  <summary>Task 2: <code>NewEnv</code> reports every bad probability</summary>
+  <summary>Task 3: <code>NewEnv</code> reports every bad probability</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/env.go#NewEnv -->
-    <p>Reporting all problems at once is kinder than making the user fix them one at a time. Follow the comment. Three tools:</p>
+    <p>In your <code>env.go</code>, make <code>NewEnv</code> reject invalid input:</p>
+    <ul>
+      <li>no arms at all: return <code>ErrNoArms</code>;</li>
+      <li>a probability outside [0, 1] (NaN counts as outside): describe it as an <code>*ArmError</code> for that arm wrapping <code>ErrInvalidProbability</code>, collect one for every bad arm, join them, and return the join wrapped with the context <code>invalid environment</code>.</li>
+    </ul>
+    <p>Reporting all problems at once is kinder than making the user fix them one at a time. Three tools:</p>
     <ul>
       <li><code>fmt.Errorf("...: %w", err)</code> <strong>wraps</strong> an error: the message gains context and the original stays reachable through <code>Unwrap</code>. With <code>%v</code> you get the same text but the chain is cut, which is a bug whenever a caller needs the cause.</li>
       <li><a href="https://pkg.go.dev/errors#Join"><code>errors.Join(errs ...error) error</code></a> combines several errors into one; pass a slice with a trailing <code>...</code>, as in <code>errors.Join(errs...)</code>. <code>errors.Is</code> and <code>errors.As</code> search every branch of it.</li>
@@ -66,9 +100,9 @@
 
 <h2>Lookups that explain themselves</h2>
 <details class="exercise" open>
-  <summary>Task 3: <code>Scenario</code> names the culprit and the choices</summary>
+  <summary>Task 4: <code>Scenario</code> names the culprit and the choices</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/scenarios.go#Scenario -->
+    <p>In <code>scenarios.go</code>, which came with chapter 1 and is now yours to change, make an unknown name an error. A known name still returns a copy of its probabilities.</p>
     <p>Chapter 2's version returned <code>(value, bool)</code>. An error can say much more: an unknown name should produce something like <code>unknown scenario "nope" (choose from close, easy, needle, spread)</code>, wrapping <code>ErrUnknownScenario</code> so callers can test for the category. Look up the name with the comma-ok form, <code>probs, ok := scenarios[name]</code>; <a href="https://pkg.go.dev/strings#Join"><code>strings.Join(elems []string, sep string) string</code></a> turns a slice into text: <code>strings.Join([]string{"a", "b"}, ", ")</code> is <code>"a, b"</code>.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/scenarios.go#Scenario -->
@@ -79,11 +113,10 @@
 
 <h2>Constructors that refuse nonsense</h2>
 <details class="exercise" open>
-  <summary>Task 4: validate in <code>NewEpsilonGreedy</code> and <code>NewUCB1</code></summary>
+  <summary>Task 5: validate in <code>NewEpsilonGreedy</code> and <code>NewUCB1</code></summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/epsgreedy.go#NewEpsilonGreedy -->
-<!-- include: ch03/start/bandit/ucb1.go#NewUCB1 -->
-    <p>Follow the comments. An epsilon error should carry the offending value: <code>fmt.Errorf("%w: got %v", ErrInvalidEpsilon, epsilon)</code> is the pattern, wrapping the sentinel and adding detail. Return <code>nil</code> for the policy along with the error.</p>
+    <p>In your constructors: fewer than one arm is <code>ErrNoArms</code> for both. For <code>NewEpsilonGreedy</code>, an epsilon outside [0, 1] (NaN too) is <code>ErrInvalidEpsilon</code>, wrapped with the value that was given.</p>
+    <p>An epsilon error should carry the offending value: <code>fmt.Errorf("%w: got %v", ErrInvalidEpsilon, epsilon)</code> is the pattern, wrapping the sentinel and adding detail. Return <code>nil</code> for the policy along with the error.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/epsgreedy.go#NewEpsilonGreedy -->
 <!-- include: ch03/bandit/ucb1.go#NewUCB1 -->
@@ -100,10 +133,17 @@
 <p>An interface value is a (type, value) pair and is <code>nil</code> only when both are empty. In <code>direct</code>, the type slot holds <code>*main.Greedy</code>, so the comparison with <code>nil</code> is false even though the pointer inside is nil, and the first method call would panic. Your <code>NewPolicy</code> must not do that.</p>
 
 <details class="exercise" open>
-  <summary>Task 5: <code>NewPolicy</code> parses specs</summary>
+  <summary>Task 6: <code>NewPolicy</code> parses specs</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/policy.go#NewPolicy -->
-    <p>The comment lists the behaviour. <a href="https://pkg.go.dev/strings#Cut"><code>strings.Cut(s, sep string) (before, after string, found bool)</code></a> splits at the first occurrence of <code>sep</code>: <code>strings.Cut("epsgreedy:0.05", ":")</code> gives <code>"epsgreedy"</code>, <code>"0.05"</code> and <code>true</code>, and with no colon <code>found</code> is false. Numbers come from <code>strconv.ParseFloat(arg, 64)</code> as in the primer. Tests check the sentinel with <code>errors.Is</code>, that the <code>strconv</code> error is still reachable inside a bad-number error, and that a failed constructor gives back a literal <code>nil</code> <code>Policy</code>.</p>
+    <p>Make your <code>NewPolicy</code> handle specs:</p>
+    <ul>
+      <li>split the spec at the first <code>:</code> into a name and an optional argument;</li>
+      <li><code>epsgreedy</code> uses <code>defaultEpsilon</code>, or the argument parsed as a number; a bad number is an error that names the spec and wraps the <code>strconv</code> error;</li>
+      <li><code>ucb1</code> takes no argument: giving one is an error;</li>
+      <li>an unknown name is an error wrapping <code>ErrUnknownPolicy</code>, and its message lists <code>PolicyNames()</code>;</li>
+      <li>if a constructor fails, return a plain <code>nil</code> <code>Policy</code> and its error, never the constructor's nil pointer (the shape from task 1's hint does this).</li>
+    </ul>
+    <p><a href="https://pkg.go.dev/strings#Cut"><code>strings.Cut(s, sep string) (before, after string, found bool)</code></a> splits at the first occurrence of <code>sep</code>: <code>strings.Cut("epsgreedy:0.05", ":")</code> gives <code>"epsgreedy"</code>, <code>"0.05"</code> and <code>true</code>, and with no colon <code>found</code> is false. Numbers come from <code>strconv.ParseFloat(arg, 64)</code> as in the primer. Tests check the sentinel with <code>errors.Is</code>, that the <code>strconv</code> error is still reachable inside a bad-number error, and that a failed constructor gives back a literal <code>nil</code> <code>Policy</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>Cut the spec into <code>name, arg, hasArg</code>, then <code>switch name</code>. In the <code>"epsgreedy"</code> case, start with <code>eps := defaultEpsilon</code> and override it if <code>hasArg</code>. In the <code>"ucb1"</code> case, <code>hasArg</code> is an error.</p>
     </details>
@@ -129,9 +169,9 @@ return p, nil</code></pre>
 <h2>A runner that does not trust its policy</h2>
 <p>A <code>Policy</code> is an interface anyone can implement, so <code>Run</code> should not trust the arm it returns.</p>
 <details class="exercise" open>
-  <summary>Task 6: <code>Run</code> catches an out-of-range arm</summary>
+  <summary>Task 7: <code>Run</code> catches an out-of-range arm</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/sim.go#Run -->
+    <p>In your <code>sim.go</code>: a policy is now something anyone can write, so <code>Run</code> must not trust the arm it returns. If it is not a valid arm of <code>env</code>, stop and return the result so far with an error.</p>
     <p>Check the arm before using it. The error should carry three layers of context (the step, the policy's name, the arm and the arm count) and wrap <code>ErrArmOutOfRange</code>, so a caller can test for the category without parsing text. Return the partial <code>res</code> with it.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/sim.go#Run -->
@@ -141,7 +181,7 @@ return p, nil</code></pre>
 </details>
 
 <h2>A testable <code>main</code></h2>
-<p>A function that calls <code>os.Exit</code> cannot be tested. The standard fix is to move the work into a function that takes its inputs and outputs as parameters and <em>returns</em> an error, leaving <code>main</code> a thin shell. That is already done in your starter:</p>
+<p>A function that calls <code>os.Exit</code> cannot be tested. The standard fix is to move the work into a function that takes its inputs and outputs as parameters and <em>returns</em> an error, leaving <code>main</code> a thin shell. The <code>main.go</code> in this chapter's files does that:</p>
 <!-- include: ch03/main.go#main,errUsage,run diff -->
 <p><code>flag.ContinueOnError</code> makes flag parsing return errors instead of exiting, and <code>io.Writer</code> lets tests capture output in a buffer while <code>main</code> passes <code>os.Stdout</code>. A second sentinel, <code>errUsage</code>, marks "you invoked the program wrong", so <code>main</code> exits with status 2 for those and 1 for everything else; with the two-<code>%w</code> form of <code>fmt.Errorf</code> (Go 1.20+) the error keeps both the usage marker and the specific cause. With your tasks done, the error paths work end to end:</p>
 <!-- transcript: ch03/errors -->
@@ -151,16 +191,16 @@ return p, nil</code></pre>
 <p>A test is a function <code>TestXxx(t *testing.T)</code> in a file ending in <code>_test.go</code>, in the same directory as the code. There are no fixtures and no assertion library: you use ordinary <code>if</code> statements and report with <code>t.Errorf</code> (mark failed, keep going) or <code>t.Fatalf</code> (mark failed, stop this test).</p>
 
 <h3>Table-driven tests and subtests</h3>
-<p>For a function with many cases, the idiomatic shape is a slice of structs, one per case, run in a loop with <code>t.Run</code>. Each case becomes a named subtest that can pass, fail and be selected on its own. This is the test for <code>NewEnv</code> that your Task 2 code passes:</p>
+<p>For a function with many cases, the idiomatic shape is a slice of structs, one per case, run in a loop with <code>t.Run</code>. Each case becomes a named subtest that can pass, fail and be selected on its own. This is the test for <code>NewEnv</code> that your Task 3 code passes:</p>
 <!-- include: ch03/bandit/env_test.go#TestNewEnvValidation -->
 <p>Adding a case is one line. The test checks both ways of inspecting an error: <code>errors.Is</code> for the category and <code>errors.As</code> to reach the <code>*ArmError</code> inside the join and the wrapper.</p>
 <!-- transcript: ch03/test-v -->
 <p>Subtest names come from the case's <code>name</code> field with spaces turned into underscores; the last policy case has an empty spec, so Go names it <code>#00</code>. Run one case with <code>go test -run 'TestNewEnvValidation/nan'</code>.</p>
 
 <details class="exercise" open>
-  <summary>Task 7: write the table test for <code>Scenario</code></summary>
+  <summary>Task 8: write the table test for <code>Scenario</code></summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/scenarios_test.go -->
+<!-- include: ch03/files/bandit/scenarios_test.go -->
     <p>Your first test from scratch. Cases go in a slice of an anonymous struct; use <code>errors.Is(err, tc.wantErr)</code>, which is true when both are <code>nil</code>, so one line handles success and failure. The function you pass to <code>t.Run</code> is usually a <em>function literal</em>, an unnamed function written in place: <code>func(t *testing.T) { ... }</code>. It can use the variables around it, such as <code>tc</code> from the loop.</p>
     <p>The pieces you will call, all documented: <a href="https://pkg.go.dev/testing#T"><code>*testing.T</code></a> is the argument every test receives; <a href="https://pkg.go.dev/testing#T.Run"><code>t.Run(name string, f func(t *testing.T)) bool</code></a> runs a subtest; <a href="https://pkg.go.dev/testing#T.Errorf"><code>t.Errorf(format string, args ...any)</code></a> reports a failure and continues, and <a href="https://pkg.go.dev/testing#T.Fatalf"><code>t.Fatalf</code></a> reports and stops this test; <a href="https://pkg.go.dev/errors#Is"><code>errors.Is(err, target error) bool</code></a> reports whether <code>err</code> is, or wraps, <code>target</code>; <a href="https://pkg.go.dev/slices#Equal"><code>slices.Equal(s1, s2 []E) bool</code></a> compares slices element by element; <a href="https://pkg.go.dev/strings#Contains"><code>strings.Contains(s, substr string) bool</code></a> reports whether one string is inside another.</p>
     <details class="answer"><summary>Hint: the skeleton</summary>
@@ -208,9 +248,9 @@ for _, tc := range tests {
 <h2>Benchmarks</h2>
 <p>A benchmark is a function <code>BenchmarkXxx(b *testing.B)</code>. Since Go 1.24 the loop is <code>for b.Loop() { ... }</code>: the framework decides how many iterations to run, and setup before the loop is excluded from the timing. (Older code writes <code>for i := 0; i &lt; b.N; i++</code>; it still works.)</p>
 <details class="exercise" open>
-  <summary>Task 8: benchmark one policy step</summary>
+  <summary>Task 9: benchmark one policy step</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/bench_test.go -->
+<!-- include: ch03/files/bandit/bench_test.go -->
     <p>Write <code>BenchmarkSelectUpdate</code> as its comment describes. The pieces, from the <a href="https://pkg.go.dev/testing">testing</a> package: <a href="https://pkg.go.dev/testing#B"><code>*testing.B</code></a> is the argument every benchmark receives; <a href="https://pkg.go.dev/testing#B.Run"><code>b.Run(name string, f func(b *testing.B)) bool</code></a> creates a sub-benchmark per policy; <a href="https://pkg.go.dev/testing#B.ReportAllocs"><code>b.ReportAllocs()</code></a> adds memory columns; <a href="https://pkg.go.dev/testing#B.Loop"><code>b.Loop() bool</code></a> is the loop condition, and <a href="https://pkg.go.dev/testing#B.Fatal"><code>b.Fatal(args ...any)</code></a> stops with an error. Run only benchmarks with <code>go test -run '^$' -bench . -benchmem ./bandit</code> (<code>-run '^$'</code> selects no tests).</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch03/bandit/bench_test.go#BenchmarkSelectUpdate -->
@@ -228,10 +268,22 @@ for _, tc := range tests {
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>All eight tasks done: these succeed, and the last command should match the output below. (<code>-count=1</code> disables test-result caching so the tests really run.)</p>
+<p>All nine tasks done: these succeed, and the last command should match the output below. (<code>-count=1</code> disables test-result caching so the tests really run.)</p>
 <!-- transcript: ch03/checkpoint -->
-<p>The run at the bottom has the same numbers as chapter 2's, as it should: this chapter changed how failures are reported, not how the simulation behaves. The golden test would have caught it otherwise. If you get stuck, <code>ch03/solution</code> has the finished chapter to compare with.</p>
+<p>The run at the bottom has the same numbers as chapter 2's, as it should: this chapter changed how failures are reported, not how the simulation behaves. The golden test would have caught it otherwise. If you get stuck, compare with <code>ch03/solution</code>, or copy it over your project and read <code>git diff</code>.</p>
+<p>Then commit:</p>
+<figure class="term"><figcaption><span class="fname">from work/banditlab</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">git add -A</span><span class="ln cmd">git commit -m "Chapter 3: errors and tests"</span></code></pre></figure>
 </div>
+
+<h2>What you learned</h2>
+<ul>
+  <li>A function that can fail returns an <code>error</code> last, and the caller handles it on the next line. Changing a signature and fixing every caller the compiler names is routine.</li>
+  <li><strong>Sentinel errors</strong> (<code>errors.New</code>) say what went wrong; <strong>error types</strong> carry details. <code>%w</code> wraps, and <code>errors.Is</code> and <code>errors.As</code> look through any number of wrappers, including <code>errors.Join</code>.</li>
+  <li>An interface holding a nil pointer is not nil: return a literal <code>nil</code> on failure.</li>
+  <li>Tests are table-driven, with subtests from <code>t.Run</code>; golden files pin whole outputs; <code>for b.Loop()</code> benchmarks with <code>-benchmem</code> show allocations.</li>
+  <li>A <code>main</code> that only calls <code>run(args, out) error</code> makes the whole program testable.</li>
+</ul>
 
 <h2>Try it</h2>
 <ul>
@@ -240,15 +292,15 @@ for _, tc := range tests {
 </ul>
 
 <h2>Extra tasks</h2>
-<p>Two more, in the same project: <code>ch03/start/bandit/extras.go</code>, with tests in <code>extras_test.go</code>. Nothing else uses them, so do them now or come back later. They are practice for wrapping errors and for writing allocation-free code.</p>
+<p>Two more, in <code>_extras/ch03/extras.go</code> with tests next to it; run them with <code>go test ./_extras/ch03</code>. They are practice for wrapping errors and for writing allocation-free code.</p>
 
 <details class="exercise">
   <summary>Extra 1: parse a probability list, with useful errors</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/extras.go#ParseProbs -->
+<!-- include: ch03/files/_extras/ch03/extras.go#ParseProbs -->
     <p>The comment states the contract, including what the errors must wrap; the tests check exactly that. Two functions split and clean the text: <a href="https://pkg.go.dev/strings#Split"><code>strings.Split(s, sep string) []string</code></a> and <a href="https://pkg.go.dev/strings#TrimSpace"><code>strings.TrimSpace(s string) string</code></a> (which removes leading and trailing white space, so <code>"0.2, 0.5"</code> parses). <code>strconv.ParseFloat(s, 64)</code> converts each piece, as in the primer.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch03/bandit/extras.go#ParseProbs -->
+<!-- include: ch03/_extras/ch03/extras.go#ParseProbs -->
     <p>The important detail is <code>%w</code>, twice. With <code>%v</code> the messages would read the same and every test that inspects the cause would fail.</p>
     </details>
   </div>
@@ -257,10 +309,10 @@ for _, tc := range tests {
 <details class="exercise">
   <summary>Extra 2: remove an allocation</summary>
   <div class="ex-body">
-<!-- include: ch03/start/bandit/extras.go#Normalize -->
+<!-- include: ch03/files/_extras/ch03/extras.go#Normalize -->
     <p>Make <code>Normalize</code> write into <code>dst</code> so a caller who reuses a buffer pays nothing. The test uses <code>testing.AllocsPerRun</code> and requires zero allocations when <code>dst</code> has capacity.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch03/bandit/extras.go#Normalize -->
+<!-- include: ch03/_extras/ch03/extras.go#Normalize -->
     <p><code>dst = dst[:0]</code> keeps the backing array but resets the length, and <code>append</code> only allocates if the capacity runs out. This append-into-a-caller-buffer shape is used throughout the standard library (<code>strconv.AppendInt</code>, for one); functions like it usually have <code>Append</code> in the name.</p>
     </details>
   </div>

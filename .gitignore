@@ -2,3 +2,4 @@
 *.out
 /tmp/
 /work/
+/tools/build_site/buildsite

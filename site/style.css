@@ -110,7 +110,9 @@ main { min-width: 0; max-width: 46rem; margin: 0 auto; padding-bottom: 3rem; }
 figure { margin: 1.4rem 0; }
 figure.code, figure.term { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--code-bg); color: var(--code-fg); }
 figcaption { display: flex; align-items: center; gap: .6rem; padding: .45rem .5rem .45rem .9rem; font: .78rem var(--sans); background: color-mix(in srgb, var(--code-bg) 70%, var(--line)); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.fname { font: 700 .82rem var(--mono); }
+.fname { font: 700 .82rem var(--mono); min-width: 0; overflow-wrap: anywhere; }
+/* A plain <pre> written in a page (not a generated listing) gets the same box and scrolls sideways. */
+.prose pre:not(figure pre) { margin: 0 0 1.1rem; padding: .7rem 1rem; overflow-x: auto; background: var(--code-bg); color: var(--code-fg); border: 1px solid var(--line); border-radius: 12px; font: .84rem/1.55 var(--mono); tab-size: 4; }
 .fmeta { color: var(--muted); }
 .fsrc { margin-left: auto; color: var(--muted); }
 .copy { font: 600 .75rem var(--sans); padding: .3rem .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--fg); cursor: pointer; }

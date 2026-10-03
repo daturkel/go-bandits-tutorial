@@ -10,13 +10,10 @@ $ go test ./... 2>&1 | grep -E '^(--- FAIL|FAIL|ok)'
 --- FAIL: TestSelectWithEpsilonZeroAlwaysExploits (0.00s)
 --- FAIL: TestSelectWithEpsilonOneAlwaysExplores (0.00s)
 --- FAIL: TestSelectMixesExploringAndExploiting (0.00s)
---- FAIL: TestEmpiricalRates (0.00s)
---- FAIL: TestRegretAt (0.00s)
---- FAIL: TestDecayedEpsilon (0.00s)
 --- FAIL: TestNewRNGDependsOnTheSeed (0.00s)
 --- FAIL: TestNewRNGDependsOnTheStream (0.00s)
 --- FAIL: TestRunAccounting (0.00s)
 --- FAIL: TestExploringBeatsNeverExploring (0.00s)
 FAIL
-FAIL	banditlab/bandit	0.005s
+FAIL	banditlab/bandit	0.003s
 FAIL

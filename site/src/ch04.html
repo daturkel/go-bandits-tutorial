@@ -12,23 +12,18 @@
   <li><strong>Writing to any <code>io.Writer</code></strong>, <code>encoding/csv</code>, <code>defer</code>, and subcommands with <code>flag.FlagSet</code> (all given, all explained).</li>
 </ul>
 
-<h2>Your starter</h2>
-<p>Work in <code>ch04/start</code>. It is chapter 3's project plus the parts of this chapter that are not about generics: the Beta sampler, the shape of the Thompson policy, the CSV and SVG writers, and the new subcommands. Five tasks are left. Try the tests:</p>
+<h2>Bring in this chapter's files</h2>
+<p>This chapter adds two packages, <code>stat</code> and <code>harness</code>, and splits <code>main.go</code> into one file per subcommand. From your project:</p>
+<!-- transcript: ch04/copy-in -->
+<p>The files that come complete are the parts of this chapter that are not about generics: the Beta sampler (<code>beta.go</code>), the CSV and SVG writers, and the three files of the command (<code>main.go</code>, <code>run.go</code>, <code>compare.go</code>). The rest have tasks. Try the tests:</p>
 <!-- transcript: ch04/starter-tests -->
-<p>The first task is that error. The tests call <code>Argmax</code> with ints and strings, and the stub only takes floats.</p>
-
+<p>The tests call <code>Argmax</code> with ints and strings, and the stub only takes floats; <code>stat</code>'s tests fail for the same kind of reason. Until the first task is done, nothing in the <code>bandit</code> package can be tested, and the harness fails because <code>Compare</code> is a stub.</p>
 <h2>Your first generic function</h2>
 <p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code> and worked on <code>[]float64</code> only. It is now needed for several slices of floats, and would be equally useful on counts or names. This is a straightforward case for generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
-<p>The starter has already switched both policies to call <code>Argmax</code>. Epsilon-greedy's private tie-breaking loop is gone:</p>
-<!-- include: ch04/bandit/epsgreedy.go#EpsilonGreedy.Select diff -->
-<p>and UCB1 computes its scores into a reusable slice and hands them to the same helper:</p>
-<!-- include: ch04/bandit/ucb1.go diff -->
-<p>Passing <code>nil</code> for the generator selects "lowest index wins" and keeps UCB1 deterministic. Using nil to mean "lowest index" is a compromise; if the two behaviours diverged further, two functions would be clearer.</p>
-
 <details class="exercise" open>
   <summary>Task 1: make <code>Argmax</code> generic</summary>
   <div class="ex-body">
-<!-- include: ch04/start/bandit/argmax.go#Argmax -->
+<!-- include: ch04/files/bandit/argmax.go#Argmax -->
     <p>Reading a generic signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <a href="https://pkg.go.dev/cmp#Ordered"><code>cmp.Ordered</code></a> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits.</p>
     <p>Write it as the comment says. The tests call it with floats, ints and strings, so until this compiles no test in the <code>bandit</code> package can run. That is expected: everything else waits on this task. Run <code>go test -run Argmax ./bandit</code>.</p>
     <details class="answer"><summary>Hint 1: the signature</summary>
@@ -40,6 +35,23 @@
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/bandit/argmax.go#Argmax -->
     <p>At the call site you rarely write the type: <code>Argmax(p.means, p.rng)</code> works because the compiler <strong>infers</strong> <code>T = float64</code> from the argument. You can be explicit with <code>Argmax[int](counts, nil)</code>. A slice of a type that is not ordered (<code>[]struct{}</code>, say) is rejected at compile time with a clear message, not at run time.</p>
+    </details>
+  </div>
+</details>
+
+<details class="exercise" open>
+  <summary>Task 2: use <code>Argmax</code> in both policies</summary>
+  <div class="ex-body">
+    <p>Your <code>EpsilonGreedy</code> and <code>UCB1</code> each contain their own "find the largest" loop. Replace both with calls to <code>Argmax</code>:</p>
+    <ul>
+      <li>In <code>EpsilonGreedy.Select</code>, the greedy branch becomes <code>Argmax(p.means, p.rng)</code>: random tie-breaking, which is what your <code>greedy</code> method did. Delete <code>greedy</code>.</li>
+      <li><code>UCB1.Select</code> needs its scores in a slice to pass to <code>Argmax</code>. Add a field <code>scores []float64</code> to <code>UCB1</code>, allocate it in <code>NewUCB1</code> with <code>make</code>, fill <code>p.scores[arm]</code> in the loop instead of tracking the best score, and return <code>Argmax(p.scores, nil)</code>. Passing <code>nil</code> for the generator means "lowest index wins", which keeps UCB1 deterministic.</li>
+    </ul>
+    <p>The existing tests for both policies are the check: <code>go test ./bandit</code> should fail only on the Thompson and policy tests that the next tasks deal with.</p>
+    <details class="answer"><summary>Answer</summary>
+<!-- include: ch04/bandit/epsgreedy.go#EpsilonGreedy.Select diff -->
+<!-- include: ch04/bandit/ucb1.go diff -->
+    <p>Allocating <code>scores</code> once, in the constructor, keeps <code>Select</code> free of allocations, the property chapter 3's benchmark measured. Using nil to mean "lowest index" is a compromise; if the two behaviours diverged further, two functions would be clearer.</p>
     </details>
   </div>
 </details>
@@ -62,9 +74,9 @@
 <!-- include: ch04/bandit/thompson.go#Thompson,NewThompson,Thompson.Name -->
 
 <details class="exercise" open>
-  <summary>Task 2: <code>Thompson.Select</code> and <code>Thompson.Update</code></summary>
+  <summary>Task 3: <code>Thompson.Select</code> and <code>Thompson.Update</code></summary>
   <div class="ex-body">
-<!-- include: ch04/start/bandit/thompson.go#Thompson.Select,Thompson.Update -->
+<!-- include: ch04/files/bandit/thompson.go#Thompson.Select,Thompson.Update -->
     <p>Follow the comments. <code>alpha</code> and <code>beta</code> start at 1 (the uniform prior) for every arm, so a success adds to <code>alpha</code> and a failure adds to <code>beta</code>. The reward is a <code>float64</code> that is 0 or 1, so a single expression does both: what gets added to each? The tests check behaviour, not the fields: an untrained policy tries every arm about equally, and after fifty wins on one arm and fifty losses on the others it picks the winner almost every time. Run <code>go test -run Thompson ./bandit</code>.</p>
     <details class="answer"><summary>Hint</summary>
     <p><code>Select</code> is one loop, <code>for arm := range p.samples</code> (with one variable, <code>range</code> gives just the index), that fills <code>p.samples[arm]</code> with <code>SampleBeta(p.alpha[arm], p.beta[arm], p.rng)</code>, and one line that returns <code>Argmax(p.samples, p.rng)</code>. <code>Update</code> adds <code>reward</code> to one counter and <code>1 - reward</code> to the other.</p>
@@ -75,18 +87,21 @@
     </details>
   </div>
 </details>
-
 <h2>Where generics do not help</h2>
-<p>Chapter 3's <code>NewPolicy</code> repeated a four-line <code>if err != nil</code> block per policy to avoid returning a typed nil. It is tempting to reach for a type parameter to remove it. The better tool is the one we already have. <code>NewPolicy</code> now calls a small helper, <code>asPolicy</code>, for every policy, including the new one:</p>
-<!-- include: ch04/bandit/policy.go#PolicyNames,NewPolicy diff -->
+<p>Your chapter 3 <code>NewPolicy</code> repeats a four-line <code>if err != nil</code> block for each policy, to avoid returning a typed nil, and adding Thompson sampling would make it three. It is tempting to reach for a type parameter to remove the repetition. The better tool is one you already have: a function whose parameter is the <code>Policy</code> interface.</p>
 
 <details class="exercise" open>
-  <summary>Task 3: <code>asPolicy</code></summary>
+  <summary>Task 4: Thompson in <code>NewPolicy</code>, via <code>asPolicy</code></summary>
   <div class="ex-body">
-<!-- include: ch04/start/bandit/policy.go#asPolicy -->
-    <p>Calling <code>asPolicy(NewUCB1(nArms))</code> is legal because a call that returns two values can be passed directly as two arguments. Write the body so the trap from chapter 3 cannot escape. The test <code>TestNewPolicyFailureReturnsNilInterface</code> catches the mistake.</p>
+    <p>In your <code>policy.go</code>:</p>
+    <ul>
+      <li>Add a helper <code>asPolicy(p Policy, err error) (Policy, error)</code> that returns a plain <code>nil</code> and the error when <code>err</code> is set, and <code>p</code> otherwise.</li>
+      <li>Use it for every policy: <code>return asPolicy(NewUCB1(nArms))</code>. That call is legal because a call that returns two values can be passed directly as the two arguments of another function, and it is safe because the helper, not the caller, decides what <code>nil</code> to return.</li>
+      <li>Add <code>"thompson"</code> to <code>PolicyNames</code> and to the switch, built with <code>NewThompson(nArms, rng)</code>. Like <code>ucb1</code>, it takes no argument.</li>
+    </ul>
+    <p>The tests <code>TestNewPolicy</code> and <code>TestNewPolicyFailureReturnsNilInterface</code> check both the new policy and the trap. Run <code>go test -run Policy ./bandit</code>.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch04/bandit/policy.go#asPolicy -->
+<!-- include: ch04/bandit/policy.go#PolicyNames,NewPolicy,asPolicy diff -->
     <p>No type parameter is needed: the function only asks "is there an error?", not anything about the concrete type. A rule of thumb that holds up: <strong>if a function only calls methods, take an interface; if it needs to hold, compare, or return values of the caller's own type, use a type parameter</strong>.</p>
     </details>
   </div>
@@ -97,9 +112,9 @@
 <p>The harness needs the mean and the standard error of a set of numbers, and later chapters will want them for integers (latencies, counts) as well as floats. That is a second natural home for generics, this time with a constraint we define ourselves.</p>
 
 <details class="exercise" open>
-  <summary>Task 4: <code>stat.Number</code> and <code>stat.Mean</code></summary>
+  <summary>Task 5: <code>stat.Number</code> and <code>stat.Mean</code></summary>
   <div class="ex-body">
-<!-- include: ch04/start/stat/stat.go#Number,Mean -->
+<!-- include: ch04/files/stat/stat.go#Number,Mean -->
     <p>A constraint can be a <strong>type set</strong>: a union of types written with <code>|</code>. The <code>~</code> in front of a type means "any type whose <em>underlying</em> type is this one", so a named type such as <code>type Reward float64</code> qualifies; without the tilde it would not. Widen <code>Number</code> to <code>~int | ~int64 | ~float32 | ~float64</code>, then write <code>Mean</code>; for an empty slice it returns not-a-number, which <a href="https://pkg.go.dev/math#NaN"><code>math.NaN() float64</code></a> produces. The tests call it with ints and a named float type, so they do not compile until <code>Number</code> is widened. Inside <code>Mean</code>, <code>float64(x)</code> is the only operation you need, and it is legal because every member of the union is numeric.</p>
     <details class="answer"><summary>Answer</summary>
 <!-- include: ch04/stat/stat.go#Number,Mean -->
@@ -124,9 +139,9 @@
 </ul>
 
 <details class="exercise" open>
-  <summary>Task 5: <code>harness.Compare</code></summary>
+  <summary>Task 6: <code>harness.Compare</code></summary>
   <div class="ex-body">
-<!-- include: ch04/start/harness/harness.go#Compare -->
+<!-- include: ch04/files/harness/harness.go#Compare -->
     <p>Follow the comment. The tests check the shapes (one curve per policy, <code>Steps</code> values in each mean, <code>Seeds</code> values in <code>Final</code>), that regret never decreases, that two runs with the same spec give identical numbers, and that bad input is an error. Run <code>go test ./harness</code>.</p>
     <details class="answer"><summary>Hint 1: the shape</summary>
     <p>An outer loop over <code>spec.Policies</code> and an inner loop over seeds, <code>for i := range spec.Seeds</code>. The inner loop builds a <code>[][]float64</code> (a slice of slices, one regret curve per seed): declare it with <code>var runs [][]float64</code> and add to it with <code>runs = append(runs, res.RegretCurve)</code>; after it, one call to <code>summarise</code> turns those into a <code>Curve</code>, which you append to <code>rep.Curves</code>.</p>
@@ -150,7 +165,7 @@
 <!-- transcript: ch04/csv-head -->
 <p>The chart is generated the same way, as a text SVG written with <code>fmt.Fprintf</code> into a <code>strings.Builder</code>. Two details make it fit a documentation site. First, colours are CSS custom properties with fallbacks (<code>var(--series-1)</code>), so the page can restyle it for dark mode while the standalone file still looks right. Second, it carries a <code>&lt;title&gt;</code> and <code>&lt;desc&gt;</code> that state the final numbers in words for screen readers, and each line is labelled directly at its right end with a marker in its colour. Lines also differ by dash pattern, so identity never rests on colour alone.</p>
 <!-- include: ch04/harness/svg.go#niceTicks,formatTick -->
-<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. It is around 140 lines and teaches little Go beyond <code>fmt</code> and <code>strings.Builder</code>; it is already in your starter, and reproduced here for reference:</p>
+<p>"Nice" tick values (round steps of 1, 2 or 5 times a power of ten) are the one piece of real plotting logic. The rest of <code>WriteSVG</code> is coordinate arithmetic: map a step to an x position, a regret to a y position, emit a <code>&lt;polyline&gt;</code> for each policy's mean and a translucent <code>&lt;polygon&gt;</code> for its ±1 standard-error band. It is around 140 lines and teaches little Go beyond <code>fmt</code> and <code>strings.Builder</code>; it came with this chapter's files, and is reproduced here for reference:</p>
 <!-- copy: ch04/harness/svg.go why="it is coordinate arithmetic and string formatting" -->
 <p>Its output is just text:</p>
 <!-- transcript: ch04/svg-head -->
@@ -181,10 +196,22 @@
 
 <h2>Checkpoint</h2>
 <div class="checkpoint">
-<p>All five tasks done: these succeed, and the last command should match the output below. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
+<p>All six tasks done: these succeed, and the last command should match the output below. To regenerate the chart and CSV used on this page, add <code>-csv regret.csv -svg regret.svg</code> to the compare command.</p>
 <!-- transcript: ch04/checkpoint -->
-<p>The final line is the <code>run</code> subcommand (chapter 3's behaviour, now with Thompson added as a third row). The whole compare run finishes in about a second on the machine that produced this page. If you get stuck, <code>ch04/solution</code> has the finished chapter to compare with.</p>
+<p>The final line is the <code>run</code> subcommand (chapter 3's behaviour, now with Thompson added as a third row). The whole compare run finishes in about a second on the machine that produced this page. If you get stuck, compare with <code>ch04/solution</code>, or copy it over your project and read <code>git diff</code>.</p>
+<p>Then commit:</p>
+<figure class="term"><figcaption><span class="fname">from work/banditlab</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">git add -A</span><span class="ln cmd">git commit -m "Chapter 4: Thompson sampling and the comparison harness"</span></code></pre></figure>
 </div>
+
+<h2>What you learned</h2>
+<ul>
+  <li>A <strong>type parameter</strong> with a <strong>constraint</strong> (<code>[T cmp.Ordered]</code>) writes one function for many types; callers rarely spell out the type, because the compiler infers it.</li>
+  <li>A constraint can be a <strong>type set</strong>, <code>~int | ~float64</code>, where <code>~</code> admits named types with that underlying type.</li>
+  <li>When a function only calls methods, an interface parameter is simpler than a type parameter, and a slice of an interface can hold different kinds of value.</li>
+  <li><code>io.Writer</code> as a parameter lets the same code write to a file, a buffer in a test, or standard output; <code>defer</code> runs clean-up on every return path.</li>
+  <li>One seed proves little: compare policies over many seeds, with error bars.</li>
+</ul>
 
 <h2>Try it</h2>
 <ul>
@@ -193,15 +220,15 @@
 </ul>
 
 <h2>Extra tasks</h2>
-<p>Three more, in the same project: <code>ch04/start/stat/extras.go</code>, with tests in <code>extras_test.go</code>. They practise generic functions with two type parameters and a generic type. Nothing else uses them.</p>
+<p>Three more, in <code>_extras/ch04/extras.go</code> with tests next to it; run them with <code>go test ./_extras/ch04</code>. They practise generic functions with two type parameters and a generic type, and they use the <code>stat.Number</code> constraint from Task 5.</p>
 
 <details class="exercise">
   <summary>Extra 1: <code>SumBy</code> and <code>MaxBy</code></summary>
   <div class="ex-body">
-<!-- include: ch04/start/stat/extras.go#SumBy,MaxBy -->
+<!-- include: ch04/files/_extras/ch04/extras.go#SumBy,MaxBy -->
     <p>Total of a projection (say, total reward across a slice of result structs) and the element with the largest key. Notice that callers never write the type arguments. The second parameter, <code>f func(T) N</code>, is a function: call it as <code>f(x)</code>. To return "nothing" for any type <code>T</code>, declare <code>var zero T</code>, which holds that type's zero value.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch04/stat/extras.go#SumBy,MaxBy -->
+<!-- include: ch04/_extras/ch04/extras.go#SumBy,MaxBy -->
     <p>Two type parameters is normal when a function relates two types. <code>var sum N</code> is the generic way to say "zero of whatever this is": no literal <code>0</code> would compile for every <code>N</code>. <code>MaxBy</code> returns <code>(T, bool)</code> rather than a special value, the comma-ok idiom from chapter 1 applied to a generic type.</p>
     </details>
   </div>
@@ -210,10 +237,10 @@
 <details class="exercise">
   <summary>Extra 2: quantiles for a percentile band</summary>
   <div class="ex-body">
-<!-- include: ch04/start/stat/extras.go#Quantile -->
+<!-- include: ch04/files/_extras/ch04/extras.go#Quantile -->
     <p>A ±1 standard-error band assumes the regret is roughly bell-shaped across seeds; the spread in the ε = 0.01 results suggests it is not. Implement <code>Quantile</code> as its comment describes. Three library functions help: <a href="https://pkg.go.dev/slices#Sort"><code>slices.Sort(x S)</code></a> sorts a slice in place (so sort a copy; <code>slices.Clone</code> from chapter 1 makes one), and <a href="https://pkg.go.dev/math#Floor"><code>math.Floor(x float64) float64</code></a> and <a href="https://pkg.go.dev/math#Ceil"><code>math.Ceil(x float64) float64</code></a> round down and up, returning a <code>float64</code> you convert back with <code>int(...)</code> to use as an index. As an open-ended follow-up with no test, add a <code>-band percentile</code> flag to <code>compare</code> that draws the 10th to 90th percentile instead.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch04/stat/extras.go#Quantile -->
+<!-- include: ch04/_extras/ch04/extras.go#Quantile -->
     <p><code>slices.Clone</code> before <code>slices.Sort</code> protects the caller's slice, since sorting is in place. <code>!(q &gt;= 0 &amp;&amp; q &lt;= 1)</code> handles NaN for the same reason as chapter 3's probability check.</p>
     </details>
   </div>
@@ -222,10 +249,10 @@
 <details class="exercise">
   <summary>Extra 3: a generic type with a useful zero value</summary>
   <div class="ex-body">
-<!-- include: ch04/start/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
+<!-- include: ch04/files/_extras/ch04/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
     <p><code>Counter[K comparable]</code> counts occurrences of keys (arms, policy names, anything comparable). Implement the three methods so that <code>var c Counter[string]</code> is usable immediately, with no constructor. The struct's map starts out <code>nil</code>: reading from a nil map is fine, but writing to one panics, so <code>Inc</code> must create it with <code>make(map[K]int)</code> the first time.</p>
     <details class="answer"><summary>Answer</summary>
-<!-- include: ch04/stat/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
+<!-- include: ch04/_extras/ch04/extras.go#Counter,Counter.Inc,Counter.Get,Counter.MostCommon -->
     <p>Generic <em>types</em> take type parameters on the type, and its methods repeat them in the receiver, <code>(c *Counter[K])</code>. The zero-value trick relies on two facts about maps: reading from a nil map is fine, and only writing panics, so <code>Inc</code> creates the map lazily. It is the pattern behind <code>sync.Mutex</code> and <code>bytes.Buffer</code>, both usable as declared. <code>comparable</code> is required because map keys must support <code>==</code>.</p>
     </details>
   </div>

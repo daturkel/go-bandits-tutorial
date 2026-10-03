@@ -1,0 +1,17 @@
+$ cp -R ../../ch03/files/. .
+$ git status --short
+ M bandit/env_test.go
+ M bandit/epsgreedy_test.go
+ M bandit/policy_test.go
+ M bandit/sim_test.go
+ M bandit/ucb1_test.go
+ M main.go
+?? _examples/typednil/
+?? _examples/vetbug/
+?? _extras/ch03/
+?? bandit/bench_test.go
+?? bandit/errors.go
+?? bandit/errors_test.go
+?? bandit/scenarios_test.go
+?? main_test.go
+?? testdata/

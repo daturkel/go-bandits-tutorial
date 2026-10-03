@@ -52,3 +52,32 @@ func TestCellConcurrentUpdates(t *testing.T) {
 		t.Errorf("final value %v, want %v (updates were lost)", got, want)
 	}
 }
+
+// A deterministic version of the race: the first Update pauses after reading
+// the value, a second Update completes in the meantime, and then the first
+// one carries on. A compare-and-swap loop notices and retries with the new
+// value; a read-then-write overwrites the second update.
+func TestCellUpdateRetriesAfterAConflict(t *testing.T) {
+	var c Cell[int]
+	c.Store(0)
+	read, resume, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		first := true
+		c.Update(func(v int) int {
+			if first {
+				first = false
+				close(read)
+				<-resume
+			}
+			return v + 1
+		})
+	}()
+	<-read
+	c.Update(func(v int) int { return v + 10 })
+	close(resume)
+	<-done
+	if got := c.Load(); got != 11 {
+		t.Errorf("final value %d, want 11: the update made while the first one was paused was lost", got)
+	}
+}

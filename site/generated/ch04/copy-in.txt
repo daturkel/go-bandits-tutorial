@@ -1,0 +1,17 @@
+$ cp -R ../../ch04/files/. .
+$ git status --short
+ M bandit/policy_test.go
+ M main.go
+ M main_test.go
+ M testdata/easy_seed42.golden
+?? _extras/ch04/
+?? bandit/argmax.go
+?? bandit/argmax_test.go
+?? bandit/beta.go
+?? bandit/beta_test.go
+?? bandit/thompson.go
+?? bandit/thompson_test.go
+?? compare.go
+?? harness/
+?? run.go
+?? stat/

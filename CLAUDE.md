@@ -7,7 +7,7 @@ Everything lives in this repo: the site, the per-chapter solution code, and the 
 ## Ground rules
 
 1. **Nothing ships unverified.** Every code sample compiles and passes its tests before the chapter is committed.
-2. **Pages are built from real source.** Code in HTML comes from compiled files in `solutions/` through include markers; never retype it.
+2. **Pages are built from real source.** Code in HTML comes from compiled files (`chNN/solution`, `chNN/files`, `solutions/`) through include markers; never retype it.
 3. **Show real output.** Terminal output comes from actually running the code (seeded, reproducible), via `tools/transcripts.sh`. Charts are generated from harness output.
 4. **Be honest about what could not be verified** (Docker, Postgres, ...): say so in the chapter's commit message and in `TODO.md`. Never fabricate output.
 5. **Write for the reader described above.** Pages never refer to how the project was produced. Do not open sections with "since you know Python". Short "Go vs. Python" callouts are welcome where the contrast teaches something, not on every page.
@@ -15,24 +15,38 @@ Everything lives in this repo: the site, the per-chapter solution code, and the 
 
 7. **Tasks only use what the reader has been shown.** Before a task, the page must have introduced every language construct its reference answer needs (not only the library calls: `if`, `import`, `%` and function literals count) and show each standard library function it calls, with its signature and a link to its pkg.go.dev entry, the first time it comes up. Explain what non-obvious parameters mean (for example `ParseFloat`'s bit size). Extras may be skipped, so a later chapter cannot rely on something only an extra introduced. `tools/build_site` enforces the library half of this (see `stdlib.go`); the language half is a manual check against the answer, so do it for every task you write.
 
+## How the course works (the format)
+
+The reader builds **one project of their own** through the whole course, in `work/banditlab` inside their clone (git-ignored), as their own git repository. Each chapter adds to the code they wrote in the previous one. Per chapter, the repo provides:
+
+- `chNN/files/`: copied into the reader's project at the start of the chapter (`cp -R ../../chNN/files/. .`). It contains every test file that is new or changed in this chapter, new files with `TASK n` stubs, and complete "given" files that teach little (a `main.go`, generated code, an SVG renderer). It must never contain a file the reader wrote or edited (a file from an earlier chapter's solution that the reader owns), nor a test file the reader wrote in an earlier task.
+- `chNN/solution/`: the complete project at the end of the chapter, cumulative (including `_examples/` and all `_extras/chMM/` so far). It is the catch-up point: `cp -R ../../chNN/solution/. .` plus `git diff`.
+
+Changes to code the reader already owns are **tasks described in prose** ("change `Run` to return an error; the compiler lists every caller"), with the solution's diff as the answer. When a chapter's tests cannot compile until such changes are made, the page says so and orders the tasks so the compile-unblocking ones come first. Tests check only the public contract and the names the page defines, so any reasonable implementation passes. Extras live in `_extras/chNN` (their own package, skipped by `./...`, run with `go test ./_extras/chNN`); later chapters must not rely on anything only an extra introduced. Scaffolding fades: stubs with signatures in Part I, specs and signatures in Part II, contracts and HTTP/gRPC tests in Parts III–IV, with infrastructure (proto, Docker, SQL schema) given and explained.
+
+`tools/check_chapters.sh` plays a reader through each converted chapter (previous solution + files: tests must fail; solution: gofmt, vet, `test -race` pass; given files and tests match the solution) and lists the files the reader edits by hand, which the page must cover with tasks.
+
+Chapters 5 to 14 and the capstone are still in the earlier format (listings to copy, `solutions/chNN`, separate `exercises/chNN`, `tools/check.sh`) and are to be converted.
+
 ## Repo layout
 
 ```
 README.md  CLAUDE.md  TODO.md
 site/        index.html, chNN.html (built, committed), style.css, site.js, src/ (page sources), generated/ (transcripts, charts)
-tools/       build_site/ (Go), transcripts.sh, check_exercises.sh
-solutions/   chNN/ complete snapshot per chapter, each with its own go.mod
-exercises/   chNN/ starters + tests; exM/reference/ holds the answer
+primer/      runnable examples, ex1..ex5 tasks (exN/reference holds the answers)
+chNN/        files/ and solution/ per converted chapter
+solutions/   chNN/ reference projects for chapters not yet converted
+exercises/   chNN/ separate exercises for chapters not yet converted
+tools/       build_site/ (Go), transcripts.sh, check_chapters.sh, check_exercises.sh, check.sh, start.sh, pg.sh
 ```
 
-- `solutions/chNN` are full snapshots, not diffs: `cd solutions/ch05 && go test -race ./...` works alone.
-- One commit per chapter: solution snapshot, page, exercise files. (Tags are not used.)
-- A chapter page ends with the exact commands to check work and the output expected.
-- The primary path is the reader building their own project one chapter at a time (`work/banditlab`, git-ignored). `tools/check.sh chNN [dir]` runs the chapter's reference tests against their code; `tools/start.sh chNN dir` gives skip-ahead and recovery. Each page states its starting point. The site builder enforces that every non-test line a chapter adds is shown via `include` or covered by `copy`. Reference tests may only use names the page defines.
+- Every solution is a full snapshot with its own `go.mod`: `cd ch04/solution && go test -race ./...` works alone.
+- Transcripts that show the reader's own project are made with `tw` in `tools/transcripts.sh`, which builds the reader's project in `work/banditlab` so that the commands shown (`cp -R ../../chNN/files/. .`) are the real ones.
+- The site builder enforces that every non-test line a chapter adds is shown via `include` or covered by `copy`, and that each standard library symbol an exercise uses for the first time is linked to pkg.go.dev in that exercise.
 
 ## Chapter page format
 
-What you will build and why (2-3 sentences); concepts introduced; build steps with code; a checkpoint (commands plus expected output); 2-4 exercises with collapsible reference answers; links to previous and next chapters. Introduce each language feature when the project needs it, and explain the why behind Go's design choices where it helps. Site design: code-first, phone-friendly, light and dark modes, visible keyboard focus, copy buttons, filename headers, highlighted added lines, inline SVG charts, look drawn from the subject (bandit arms, regret curves).
+What you will build and why, opening with real output of the finished program; the Go in this chapter; bringing in the chapter's files (the copy command, what is new and changed, and what the first test run shows); topic sections, each teaching a concept with a small example before the task that needs it; tasks (why, spec, docs links and signatures for new library calls, tiered hints, answer); a checkpoint (commands plus expected output) and a commit; what you learned; things to try; extra tasks. No "Step n" headings. Introduce each language feature before a task needs it, and explain the why behind Go's design choices where it helps. Site design: code-first, phone-friendly, light and dark modes, visible keyboard focus, copy buttons, filename headers, highlighted added lines, inline SVG charts, look drawn from the subject (bandit arms, regret curves).
 
 ## Domain model (keep consistent across chapters)
 
@@ -53,10 +67,10 @@ Capstone: end-to-end load test comparing policies across replicas with staleness
 
 ## Definition of done for a chapter
 
-- `gofmt -l .` prints nothing; `go vet ./...`, `go build ./...`, `go test -race ./...` pass in `solutions/chNN`.
+- `tools/check_chapters.sh chNN` passes: the solution is gofmt-clean and passes vet and `go test -race`, extras included; a reader who copies `files/` onto the previous solution sees failing tests; given files and tests match the solution.
 - Server code was started and exercised with real requests; the page shows that output.
 - The page builds, includes only real source, and all internal links resolve.
-- Exercise tests fail against the starter and pass against the reference (`tools/check_exercises.sh`).
+- Every file the check lists as edited by the reader is covered by a task on the page, and the page's claims about what fails when (for example "after task 3 the tests compile") were checked by playing the reader.
 - Committed.
 
 ## Working style
