@@ -314,6 +314,9 @@ ch13() {
 }
 
 ch14() {
+  # site/generated/ch14/compose-client.txt is not made here: it is the output of
+  # the "docker compose" job in .github/workflows/ci.yml, copied from its log,
+  # because this machine has no Docker daemon.
   "$ROOT/tools/pg.sh" start > /dev/null
   export PATH="$(go env GOPATH)/bin:$PATH"
   ( unset BANDIT_TEST_DATABASE_URL; verify ch14 )

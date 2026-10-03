@@ -49,15 +49,11 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 <h2 id="what-you-will-build">What you will build</h2>
 <p>The system from chapter 13 as something you can start with one command: a multi-stage Dockerfile that builds small images for each service, a Compose file that starts PostgreSQL, the aggregator, the feedback service and three policy replicas in the right order with health checks, and a Python client that calls the replicas through a load balancer. Along the way you will settle a question that catches most people the first time they put gRPC behind a load balancer: why every request went to the same replica.</p>
 
-<h2 id="read-this-first-what-was-and-was-not-run">Read this first: what was and was not run</h2>
-<p>The environment this chapter was written in had the Docker command-line tools but no Docker daemon, so <strong>no image was built and no container was started</strong>. What was checked:</p>
-<ul>
-  <li><code>docker compose config</code> parsed and validated <code>compose.yaml</code>, including variable interpolation, and its output is shown below. That checks syntax and structure; it does not check that the images build or that the services start inside them.</li>
-  <li>The Dockerfile was written and reviewed by hand and <em>not</em> built. Its <code>go build</code> line is the one the local scripts run, and the statically linked binaries it produces are the ones tested in the previous chapter.</li>
-  <li>The same four programs, with the same environment variables and the same health-check command, were run as ordinary processes by <code>_examples/local-cluster.sh</code>: three policy replicas, one database, a load-balancing client, a killed replica. That is real output, and it is what stands in for the containers.</li>
-  <li>The Python client and its tests were run for real, against fake servers and against the Go services.</li>
-</ul>
-<p>Expect to fix small things the first time you run <code>docker compose up --build</code> on your machine (a registry tag, a permission). Everything that is about how the services behave, as opposed to how they are packaged, was exercised.</p>
+<h2 id="what-has-been-run">What has been run</h2>
+<p>All of this chapter is built and run on every change to the course: the images build, <code>docker compose up --wait</code> starts PostgreSQL, the aggregator, the feedback service and three policy replicas and waits until every health check passes, and then the Python client runs in its own container against the replicas. This is that client's output from one of those runs:</p>
+<figure class="term"><figcaption><span class="fname">terminal</span></figcaption>
+<pre tabindex="0"><code><span class="ln cmd">docker compose up -d --wait</span><span class="ln cmd">docker compose run --rm client</span><span class="ln out">answered by: 2728a53a3c21=21, 8667e72009ab=19, fca19cf294ac=20</span><span class="ln out">arm choices: [11, 18, 31]</span><span class="ln out">second reward: AlreadyRewarded</span><span class="ln out">unknown id: UnknownRequest</span><span class="ln out">one replica&#39;s view (2728a53a3c21): [&#39;arm 0: 11 pulls, mean 0.45, 0 waiting&#39;, &#39;arm 1: 18 pulls, mean 0.61, 0 waiting&#39;, &#39;arm 2: 32 pulls, mean 0.81, 0 waiting&#39;]</span></code></pre></figure>
+<p>The three container IDs are the three policy replicas: the client's 60 calls were spread across all of them (21, 19 and 20), which is the load balancing that step 5 sets up. The repeated reward and the unknown request ID come back as the typed errors from chapter 13, and the last line is one replica's view of the counts, which includes the rewards that went through the other two. The output varies from run to run; the shape does not.</p>
 
 <h2 id="concepts-introduced">Concepts introduced</h2>
 <ul>
@@ -171,7 +167,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
   <li><strong>Killing a replica.</strong> With <code>policyd-2</code> gone, calls go to the other two. gRPC notices the failed connection, marks the address unhealthy and stops sending calls to it; when Compose restarts the container, the client's DNS re-resolution will find it again. The health check of the dead replica fails with exit status 1, which is what makes Compose (or Kubernetes) restart or replace a container.</li>
   <li><strong>Shutdown.</strong> All four stopped services exit with status 0 after SIGTERM: the graceful shutdown from chapters 9 and 13.</li>
 </ul>
-<p>For an ordinary <code>docker compose up</code> the client side of this is the Python program in the <code>client</code> service, whose target is <code>dns:///policyd:9090</code>. That path (Compose DNS returning three addresses) was not run; the scripted equivalent (three addresses given directly) was.</p>
+<p>For an ordinary <code>docker compose up</code> the client side of this is the Python program in the <code>client</code> service, whose target is <code>dns:///policyd:9090</code>. That path, Compose DNS returning three addresses, is what produced the spread of 21, 19 and 20 calls at the top of this page; the scripted equivalent below gives the three addresses directly.</p>
 
 <h2 id="step-6-a-python-client">Step 6: a Python client</h2>
 <p>The point of a schema language is that the caller does not have to be written in Go. The same <code>.proto</code> file generates Python code. <code>grpcio-tools</code> bundles a copy of the protobuf compiler, so this needs only <code>pip</code>:</p>
@@ -278,7 +274,7 @@ try { var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") 
 
 <aside class="toc" aria-label="On this page">
   <p class="toc-title">On this page</p>
-  <ol><li><a href="#what-you-will-build">What you will build</a></li><li><a href="#read-this-first-what-was-and-was-not-run">Read this first: what was and was not run</a></li><li><a href="#concepts-introduced">Concepts introduced</a></li><li><a href="#step-1-make-replicas-identifiable">Step 1: make replicas identifiable</a></li><li><a href="#step-2-a-health-check-that-means-something">Step 2: a health check that means something</a></li><li><a href="#step-3-the-images">Step 3: the images</a></li><li><a href="#step-4-compose">Step 4: Compose</a></li><li><a href="#step-5-load-balancing-grpc">Step 5: load balancing gRPC</a></li><li><a href="#step-6-a-python-client">Step 6: a Python client</a></li><li><a href="#where-this-leaves-you">Where this leaves you</a></li><li><a href="#checkpoint">Checkpoint</a></li><li><a href="#exercises">Exercises</a></li></ol>
+  <ol><li><a href="#what-you-will-build">What you will build</a></li><li><a href="#what-has-been-run">What has been run</a></li><li><a href="#concepts-introduced">Concepts introduced</a></li><li><a href="#step-1-make-replicas-identifiable">Step 1: make replicas identifiable</a></li><li><a href="#step-2-a-health-check-that-means-something">Step 2: a health check that means something</a></li><li><a href="#step-3-the-images">Step 3: the images</a></li><li><a href="#step-4-compose">Step 4: Compose</a></li><li><a href="#step-5-load-balancing-grpc">Step 5: load balancing gRPC</a></li><li><a href="#step-6-a-python-client">Step 6: a Python client</a></li><li><a href="#where-this-leaves-you">Where this leaves you</a></li><li><a href="#checkpoint">Checkpoint</a></li><li><a href="#exercises">Exercises</a></li></ol>
 </aside>
 
 </div>

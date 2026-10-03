@@ -24,19 +24,12 @@
 
 - Chapter 10: the `docker run ... postgres:16` command shown as an alternative to `tools/pg.sh` was not run (no Docker daemon). The Redis design note has no code behind it.
 
-- Chapter 14: **no image was built and no container started** (no Docker daemon). `docker compose config` validated `compose.yaml` (syntax, interpolation); the Dockerfiles were written and reviewed by hand and never built, so base-image tags (`golang:1.27.1`, `gcr.io/distroless/static-debian12:nonroot`, `python:3.12-slim`, `postgres:16`) are unchecked, as is Compose DNS returning all replica addresses to `dns:///policyd:9090` and the `client` service. `_examples/local-cluster.sh` ran the same binaries, environment variables and health-check command as processes, and that output is real. The Python client and its tests ran for real (Python 3.11, grpcio from PyPI).
+- Chapter 14: verified in CI (`.github/workflows/ci.yml`, job `docker compose`): the images build from the Dockerfile, `docker compose up --wait` brings up PostgreSQL, the aggregator, the feedback service and three policy replicas until every health check passes, and `docker compose run --rm client` runs the Python client against them, with Compose DNS spreading its calls across the three replicas. The same job runs for the capstone. Not verified: running behind a real load balancer or on more than one host, and the local machine where the course was written still has no Docker daemon, so transcripts of `docker` commands other than the client run come from CI logs.
 
 ## Deferred
 
 - **Convert chapters 5 to 14 and the capstone to the own-project format** (primer and chapters 1 to 4 are done; see "How the course works" in `CLAUDE.md`). Each needs a `chNN/files` and a cumulative `chNN/solution` (moved from `solutions/chNN`, with the stronger chapter 1 to 4 tests carried forward), tasks for every file the reader edits, a rewritten page, and its old `exercises/chNN` folded in as `_extras/chNN`. Scaffolding should fade: specs and signatures in Part II, contracts and HTTP/gRPC tests in Parts III and IV, infrastructure given. Consider splitting chapter 13 (ten steps, three services). When done, remove `solutions/`, `exercises/`, `tools/check.sh`, `tools/start.sh` and `tools/check_exercises.sh`.
 
-- **GitHub Actions CI** (not started). The Pages workflow only rebuilds the site and deploys it. A CI workflow should run on every push and pull request:
-  - per chapter in `solutions/`: `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./...`, `go test -race ./...`, with a PostgreSQL service container and `BANDIT_TEST_DATABASE_URL` set so the database tests run instead of skipping;
-  - `tools/check_exercises.sh` (starters must fail, references must pass);
-  - the Python client tests in `solutions/ch14/clients/python` and `solutions/capstone/clients/python` (needs `pip install -r requirements.txt` and `sh generate.sh` first);
-  - `buf lint` and a check that `buf generate` leaves the committed generated code unchanged (pin the plugin versions, see the chapter 13 note above);
-  - the site staleness and link check, which the Pages workflow already does;
-  - `docker compose config` and, since GitHub runners have Docker, an actual `docker compose build` and `up` with a health-check wait, which would finally verify chapter 14's images.
-  Decide whether to run chapters in a matrix (fifteen jobs, parallel) or in one job; the matrix is slower to read but shows which chapter broke.
+- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: gofmt, vet and `go test -race` for every solution with a PostgreSQL 16 service (so the database tests run), `tools/check_chapters.sh`, `tools/check_exercises.sh`, the site staleness and link check, the Python client tests, `buf lint` plus a check that `buf generate` (with the pinned plugin versions) leaves the committed code unchanged, and a Docker Compose build and run. Still to decide: whether to add `tools/transcripts.sh` runs, which would catch transcripts that no longer match the code but depend on timing.
 
 - Timing figures in transcripts (`go test`, benchmarks) come from the machine that ran `tools/transcripts.sh` and will differ on yours. Seeded simulation output is exact.

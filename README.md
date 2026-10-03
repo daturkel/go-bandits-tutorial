@@ -52,7 +52,7 @@ tools/check_exercises.sh                    # old-format exercises: starters fai
 
 The builder fails if a chapter adds source lines its page never shows, or if an exercise uses a standard library function for the first time without linking its documentation.
 
-`.github/workflows/pages.yml` rebuilds the site on every push to `main`, fails if the committed pages are stale, and publishes it to GitHub Pages.
+`.github/workflows/ci.yml` runs on every push and pull request: every solution's tests (with a real PostgreSQL), the chapter and exercise checks, the site check, the Python clients, the protobuf code, and a Docker Compose build and run. `.github/workflows/pages.yml` rebuilds the site on every push to `main`, fails if the committed pages are stale, and publishes it to GitHub Pages.
 
 ## Chapter plan
 

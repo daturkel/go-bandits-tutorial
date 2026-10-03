@@ -1,0 +1,7 @@
+$ docker compose up -d --wait
+$ docker compose run --rm client
+answered by: 2728a53a3c21=21, 8667e72009ab=19, fca19cf294ac=20
+arm choices: [11, 18, 31]
+second reward: AlreadyRewarded
+unknown id: UnknownRequest
+one replica's view (2728a53a3c21): ['arm 0: 11 pulls, mean 0.45, 0 waiting', 'arm 1: 18 pulls, mean 0.61, 0 waiting', 'arm 2: 32 pulls, mean 0.81, 0 waiting']
