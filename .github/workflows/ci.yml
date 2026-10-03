@@ -1,0 +1,170 @@
+# Checks everything the course claims: every reference project builds and
+# passes its tests (with a real PostgreSQL, so the database tests run instead
+# of skipping), the chapter and exercise checks hold, the committed site is up
+# to date, the Python clients work, the protobuf code is current, and the
+# Docker images build and the Compose system starts and answers a client.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  solutions:
+    name: go ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - ch01/solution
+          - ch02/solution
+          - ch03/solution
+          - ch04/solution
+          - solutions/ch05
+          - solutions/ch06
+          - solutions/ch07
+          - solutions/ch08
+          - solutions/ch09
+          - solutions/ch10
+          - solutions/ch11
+          - solutions/ch12
+          - solutions/ch13
+          - solutions/ch14
+          - solutions/capstone
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: bandit
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      BANDIT_TEST_DATABASE_URL: postgres://postgres:bandit@localhost:5432/postgres?sslmode=disable
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.mod
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "not gofmt-clean:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test -race
+        run: go test -race -count=1 ./...
+      - name: extra tasks
+        run: |
+          for d in _extras/*/; do
+            [ -d "$d" ] || continue
+            go vet "./$d" && go test -race -count=1 "./$d"
+          done
+
+  checks:
+    name: chapters, exercises and site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/build_site/go.mod
+          cache-dependency-path: tools/build_site/go.mod
+      - name: chapters (play a reader through each converted chapter)
+        run: tools/check_chapters.sh
+      - name: exercises (starters fail, references pass)
+        run: tools/check_exercises.sh
+      - name: site is up to date and its links resolve
+        run: |
+          (cd tools/build_site && go run . ../..)
+          git diff --exit-code -- site
+
+  python:
+    name: python client ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [solutions/ch14, solutions/capstone]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}/clients/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: sh generate.sh
+      - run: python -m unittest -v
+
+  protobuf:
+    name: protobuf ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [solutions/ch13, solutions/ch14, solutions/capstone]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.mod
+      # The versions that produced the committed code (see TODO.md).
+      - name: install buf and the plugins
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.73.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: buf lint
+      - name: generated code is current
+        run: |
+          buf generate
+          git diff --exit-code -- internal/gen
+
+  compose:
+    name: docker compose ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [solutions/ch14, solutions/capstone]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - name: build the images
+        run: docker compose build
+      - name: start the system and wait for every health check
+        run: docker compose up -d --wait --wait-timeout 180
+      - run: docker compose ps
+      - name: the Python client against the three replicas
+        run: docker compose run --rm client
+      - name: logs
+        if: always()
+        run: docker compose logs --no-color | tail -n 200
+      - name: stop
+        if: always()
+        run: docker compose down -v
