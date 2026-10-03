@@ -15,9 +15,9 @@
 <h2>Bring in this chapter's files</h2>
 <p>This chapter adds two packages, <code>stat</code> and <code>harness</code>, and splits <code>main.go</code> into one file per subcommand. From your project:</p>
 <!-- transcript: ch04/copy-in -->
-<p>The files that come complete are the parts of this chapter that are not about generics: the Beta sampler (<code>beta.go</code>), the CSV and SVG writers, and the three files of the command (<code>main.go</code>, <code>run.go</code>, <code>compare.go</code>). The rest have tasks. Try the tests:</p>
+<p>The files that come complete are the parts of this chapter that are not about generics: the Beta sampler (<code>beta.go</code>), the CSV and SVG writers, and the three files of the command (<code>main.go</code>, <code>run.go</code>, <code>compare.go</code>). The rest have tasks. This time the program builds, because every stub compiles (<code>go build ./...</code> prints nothing); the tests are another matter:</p>
 <!-- transcript: ch04/starter-tests -->
-<p>The tests call <code>Argmax</code> with ints and strings, and the stub only takes floats; <code>stat</code>'s tests fail for the same kind of reason. Until the first task is done, nothing in the <code>bandit</code> package can be tested, and the harness fails because <code>Compare</code> is a stub.</p>
+<p>The <code>bandit</code> tests call <code>Argmax</code> with ints and strings, and the stub only takes floats, so the package's tests do not compile; <code>stat</code>'s tests fail to compile for the same kind of reason. The harness tests do run, and fail, because <code>Compare</code> is a stub. Task 1 is the one that unblocks the most.</p>
 <h2>Your first generic function</h2>
 <p>Both epsilon-greedy (with ties broken at random) and Thompson sampling need "the index of the largest element". In chapter 1 that loop lived inside <code>EpsilonGreedy</code> and worked on <code>[]float64</code> only. It is now needed for several slices of floats, and would be equally useful on counts or names. This is a straightforward case for generics: the algorithm does not depend on the element type, only on the ability to compare two of them.</p>
 <details class="exercise" open>
@@ -25,7 +25,7 @@
   <div class="ex-body">
 <!-- include: ch04/files/bandit/argmax.go#Argmax -->
     <p>Reading a generic signature: <code>[T cmp.Ordered]</code> declares a <strong>type parameter</strong> <code>T</code> and constrains it. A constraint is an interface, but one that describes a <em>set of types</em>; <a href="https://pkg.go.dev/cmp#Ordered"><code>cmp.Ordered</code></a> in the standard library is the set of all types that support <code>&lt;</code>, <code>&gt;</code> and friends (all integer and float types, and <code>string</code>). Inside the function you may do anything the constraint permits.</p>
-    <p>Write it as the comment says. The tests call it with floats, ints and strings, so until this compiles no test in the <code>bandit</code> package can run. That is expected: everything else waits on this task. Run <code>go test -run Argmax ./bandit</code>.</p>
+    <p>Write it as the comment says. The tests call it with floats, ints and strings, so until this compiles no test in the <code>bandit</code> package can run. That is expected: everything else waits on this task. Run <code>go test -run Argmax ./bandit</code>. Once it passes, all of the <code>bandit</code> tests compile again, and from here on each task turns failing tests green.</p>
     <details class="answer"><summary>Hint 1: the signature</summary>
     <p><code>func Argmax[T cmp.Ordered](xs []T, rng *rand.Rand) int</code>, and add <code>"cmp"</code> to the imports.</p>
     </details>

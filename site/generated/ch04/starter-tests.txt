@@ -1,3 +1,4 @@
+$ go build ./...
 $ go test ./... 2>&1 | grep -v "^\s" | head -16
 # banditlab/stat [banditlab/stat.test]
 stat/stat_test.go:12:16: in call to Mean, T (type int) does not satisfy Number
@@ -12,6 +13,6 @@ flag provided but not defined: -bogus
 Usage of banditsim run:
 --- FAIL: TestCompareWritesFiles (0.00s)
 FAIL
-FAIL	banditlab	0.005s
+FAIL	banditlab	0.004s
 FAIL	banditlab/bandit [build failed]
 --- FAIL: TestCompareShapes (0.00s)

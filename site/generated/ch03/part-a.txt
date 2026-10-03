@@ -1,8 +1,6 @@
 $ go build ./...
 # banditlab
-./main.go:42:12: invalid operation: err != nil (mismatched types bool and untyped nil)
-./main.go:56:15: assignment mismatch: 2 variables but bandit.NewEnv returns 1 value
 ./main.go:60:53: not enough arguments in call to bandit.NewPolicy
-	have (string, unknown type, *rand.Rand)
+	have (string, int, *rand.Rand)
 	want (string, int, float64, *rand.Rand)
 ./main.go:70:15: assignment mismatch: 2 variables but bandit.Run returns 1 value

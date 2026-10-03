@@ -16,9 +16,9 @@
 <p>From your project:</p>
 <!-- transcript: ch03/copy-in -->
 <p>New: <code>errors.go</code>, the project's error vocabulary, with one task in it; two test files you write yourself (tasks 8 and 9); a golden file and its test for the command's output; two example programs; and the extras. Replaced: <code>main.go</code>, now restructured so that it can be tested, and the test files. Everything else this chapter changes is code you wrote, and the tasks say where.</p>
-<p>As in chapter 2, nothing compiles yet:</p>
+<p>As in chapter 2, start with <code>go build ./...</code>, which compiles the program but not the tests:</p>
 <!-- transcript: ch03/starter-tests -->
-<p>The errors all say the same thing in different places: the tests and <code>main.go</code> expect functions that can fail to return an <code>error</code>. That is the first task, after a look at what an error is in Go.</p>
+<p>Four errors in the new <code>main.go</code>, and they all say one thing: it expects the functions that can fail to return an <code>error</code>. That is the first task, after a look at what an error is in Go.</p>
 
 <h2>Errors are values</h2>
 <p>Go has no exceptions. A function that can fail returns an <code>error</code> as its last result, and the caller decides what to do on the very next line:</p>
@@ -38,18 +38,17 @@
     <p>Change these functions in your code to the signatures below. Do not add any checking yet: every new <code>error</code> result is <code>nil</code> for now, and the tasks after this one fill in when it is not.</p>
 <figure class="term"><figcaption><span class="fname">the signatures after this task</span></figcaption>
 <pre tabindex="0"><code><span class="ln out">func NewEnv(probs []float64, rng *rand.Rand) (*Env, error)                           // env.go</span><span class="ln out">func Scenario(name string) ([]float64, error)                                         // scenarios.go</span><span class="ln out">func NewEpsilonGreedy(nArms int, epsilon float64, rng *rand.Rand) (*EpsilonGreedy, error)</span><span class="ln out">func NewUCB1(nArms int) (*UCB1, error)</span><span class="ln out">func NewPolicy(spec string, nArms int, rng *rand.Rand) (Policy, error)                 // policy.go</span><span class="ln out">func Run(env *Env, pol Policy, steps int) (Result, error)                              // sim.go</span></code></pre></figure>
-    <p>Two of them change more than their results:</p>
-    <ul>
-      <li><code>Scenario</code> returned <code>([]float64, bool)</code>; the <code>bool</code> becomes an <code>error</code>. For now, return the probabilities and <code>nil</code> (an unknown name gives a nil slice, as before). Task 4 makes an unknown name an error.</li>
-      <li><code>NewPolicy</code> loses its <code>epsilon</code> parameter, because the first argument becomes a <em>spec</em> that can carry it, as in <code>epsgreedy:0.05</code>. Task 6 parses specs. Until then, add <code>const defaultEpsilon = 0.1</code> to <code>policy.go</code> and pass that.</li>
-    </ul>
-    <p>Then follow the compiler. <code>go test ./...</code> lists the callers that no longer compile; the ones in your code are inside <code>NewPolicy</code>, which calls the two constructors. When it gets past compiling, the remaining failures are the checks the next tasks add. Two of them are panics: an unknown scenario now yields an empty environment, and a misbehaving test policy indexes past the end of a slice. A panic stops the rest of that package's tests, so a few failures only show up once tasks 4 and 7 are done.</p>
+    <p>Do it in two passes, so the error list shrinks as you go.</p>
+    <p><strong>Part A: the functions that build things.</strong> Change <code>NewEnv</code>, <code>Scenario</code>, <code>NewEpsilonGreedy</code> and <code>NewUCB1</code>. <code>Scenario</code> returned <code>([]float64, bool)</code>, and the <code>bool</code> becomes an <code>error</code>: for now, return the probabilities and <code>nil</code> (an unknown name gives a nil slice, as before; task 4 makes it an error). Your <code>NewPolicy</code> calls the two constructors, so it stops compiling; fix its body (the hint shows how) but leave its parameters alone for now. Then <code>go build ./...</code> reports only the two errors part B is for:</p>
+<!-- transcript: ch03/part-a -->
     <details class="answer"><summary>Hint: calling a constructor that can fail</summary>
     <p>A call that returns two values is received with two variables, and the error is checked straight away:</p>
 <figure class="term"><figcaption><span class="fname">inside NewPolicy</span></figcaption>
 <pre tabindex="0"><code><span class="ln out">case "ucb1":</span><span class="ln out">    p, err := NewUCB1(nArms)</span><span class="ln out">    if err != nil {</span><span class="ln out">        return nil, err</span><span class="ln out">    }</span><span class="ln out">    return p, nil</span></code></pre></figure>
     <p>It looks longer than it needs to be. <code>return NewUCB1(nArms)</code> would compile, and it would be a bug; task 6 shows why.</p>
     </details>
+    <p><strong>Part B: <code>NewPolicy</code> and <code>Run</code>.</strong> <code>NewPolicy</code> loses its <code>epsilon</code> parameter, because the first argument becomes a <em>spec</em> that can carry it, as in <code>epsgreedy:0.05</code>; task 6 parses specs. Until then, add <code>const defaultEpsilon = 0.1</code> to <code>policy.go</code> and pass that. <code>Run</code> returns <code>res, nil</code>.</p>
+    <p>Now <code>go build ./...</code> is quiet and <code>go test ./...</code> compiles the tests too. From here on, each task turns failing tests green. Two of the failures are panics: an unknown scenario now yields an empty environment, and a misbehaving test policy indexes past the end of a slice. A panic stops the rest of that package's tests, so a few failures only show up once tasks 4 and 7 are done.</p>
   </div>
 </details>
 

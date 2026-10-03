@@ -12,6 +12,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # A reader commits each chapter; transcripts that show git status start from that.
 GITPRE='git init -q && git add -A && git -c user.name=reader -c user.email=reader@example.com commit -qm "previous chapter"'
 
+# Reader states in the middle of a chapter, for transcripts that show what the
+# compiler says partway through. Each is a sequence of edits a reader makes.
+CH02_TASKS_1_2='cp -R ../../ch02/files/. . && cp ../../ch02/solution/bandit/sim.go bandit/ && sed -i "s|^\t// TASK 1: list the three methods every policy has: Select, Update and Name.\$|\tName() string\n\tSelect() int\n\tUpdate(arm int, reward float64)|" bandit/policy.go'
+CH03_PART_A='cp -R ../../ch03/files/. . &&
+  sed -i "s|^func NewEnv(probs \[\]float64, rng \*rand.Rand) \*Env {|func NewEnv(probs []float64, rng *rand.Rand) (*Env, error) {|; s|^\treturn &Env{probs: slices.Clone(probs), rng: rng}\$|\treturn \&Env{probs: slices.Clone(probs), rng: rng}, nil|" bandit/env.go &&
+  sed -i "s|^func Scenario(name string) (\[\]float64, bool) {|func Scenario(name string) ([]float64, error) {|; s|^\tprobs, ok := scenarios\[name\]\$|\tprobs := scenarios[name]|; s|^\treturn slices.Clone(probs), ok\$|\treturn slices.Clone(probs), nil|" bandit/scenarios.go &&
+  sed -i "s|) \*EpsilonGreedy {\$|) (*EpsilonGreedy, error) {|; s|Epsilon: epsilon, rng: rng}\$|Epsilon: epsilon, rng: rng}, nil|" bandit/epsgreedy.go &&
+  sed -i "s|^func NewUCB1(nArms int) \*UCB1 {|func NewUCB1(nArms int) (*UCB1, error) {|; s|return &UCB1{armStats: newArmStats(nArms)}\$|return \&UCB1{armStats: newArmStats(nArms)}, nil|" bandit/ucb1.go &&
+  sed -i "s|^\t\treturn NewEpsilonGreedy(nArms, epsilon, rng), nil|\t\tp, err := NewEpsilonGreedy(nArms, epsilon, rng)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn p, nil|; s|^\t\treturn NewUCB1(nArms), nil|\t\tp, err := NewUCB1(nArms)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn p, nil|" bandit/policy.go'
+
 # soldir <chapter>: the chapter's reference solution, in either layout.
 soldir() {
   if [ -d "$ROOT/$1/solution" ]; then echo "$ROOT/$1/solution"; else echo "$ROOT/solutions/$1"; fi
@@ -113,7 +123,8 @@ ch01() {
 
 ch02() {
   TW_PRE="$GITPRE" tw ch02 copy-in 'cp -R ../../ch02/files/. .' 'git status --short'
-  TW_PRE='cp -R ../../ch02/files/. .' tw ch02 starter-tests 'go test ./... 2>&1 | head -16'
+  TW_PRE='cp -R ../../ch02/files/. .' tw ch02 starter-tests 'go build ./...'
+  TW_PRE="$CH02_TASKS_1_2" tw ch02 tests-compile 'go build ./...' 'go test ./... 2>&1 | head -12'
   t ch02 run 'go run .'
   t ch02 run-one 'go run . -scenario spread -policy ucb1 -steps 20000'
   t ch02 value-receiver 'go run ./_examples/valuereceiver'
@@ -122,7 +133,8 @@ ch02() {
 
 ch03() {
   TW_PRE="$GITPRE" tw ch03 copy-in 'cp -R ../../ch03/files/. .' 'git status --short'
-  TW_PRE='cp -R ../../ch03/files/. .' tw ch03 starter-tests 'go test ./... 2>&1 | head -14'
+  TW_PRE='cp -R ../../ch03/files/. .' tw ch03 starter-tests 'go build ./...'
+  TW_PRE="$CH03_PART_A" tw ch03 part-a 'go build ./...'
   t ch03 errors 'go run . -scenario nope' 'go run . -policy epsgreedy:lots' 'go run . -policy epsgreedy:2' 'go run . -policy thompson'
   t ch03 test-v 'go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit'
   t ch03 vet 'go vet ./_examples/vetbug; echo "exit status: $?"'
@@ -134,7 +146,7 @@ ch03() {
 
 ch04() {
   TW_PRE="$GITPRE" tw ch04 copy-in 'cp -R ../../ch04/files/. .' 'git status --short'
-  TW_PRE='cp -R ../../ch04/files/. .' tw ch04 starter-tests 'go test ./... 2>&1 | grep -v "^\s" | head -16'
+  TW_PRE='cp -R ../../ch04/files/. .' tw ch04 starter-tests 'go build ./...' 'go test ./... 2>&1 | grep -v "^\s" | head -16'
   t ch04 compare 'go run . compare -scenario needle -steps 5000 -seeds 100'
   t ch04 compare-easy 'go run . compare -scenario easy -steps 5000 -seeds 100'
   t ch04 compare-close 'go run . compare -scenario close -steps 5000 -seeds 100'

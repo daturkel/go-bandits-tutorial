@@ -28,4 +28,4 @@ $ go test -v -run "TestNewEnvValidation|TestNewPolicy$" ./bandit
     --- PASS: TestNewPolicy/thompson (0.00s)
     --- PASS: TestNewPolicy/#00 (0.00s)
 PASS
-ok  	banditlab/bandit	0.004s
+ok  	banditlab/bandit	(cached)

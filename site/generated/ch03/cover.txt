@@ -1,3 +1,3 @@
 $ go test -count=1 -cover ./...
-ok  	banditlab	0.004s	coverage: 80.6% of statements
-ok  	banditlab/bandit	0.006s	coverage: 98.0% of statements
+ok  	banditlab	0.003s	coverage: 80.6% of statements
+ok  	banditlab/bandit	0.007s	coverage: 98.0% of statements

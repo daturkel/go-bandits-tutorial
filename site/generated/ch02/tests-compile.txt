@@ -1,0 +1,14 @@
+$ go build ./...
+$ go test ./... 2>&1 | head -12
+?   	banditlab	[no test files]
+# banditlab/bandit [banditlab/bandit.test]
+bandit/policy_test.go:12:13: cannot use (*EpsilonGreedy)(nil) (value of type *EpsilonGreedy) as Policy value in variable declaration: *EpsilonGreedy does not implement Policy (missing method Name)
+bandit/epsgreedy_test.go:20:27: p.total undefined (type *EpsilonGreedy has no field or method total)
+bandit/epsgreedy_test.go:20:52: p.means undefined (type *EpsilonGreedy has no field or method means)
+bandit/epsgreedy_test.go:21:76: p.total undefined (type *EpsilonGreedy has no field or method total)
+bandit/epsgreedy_test.go:21:85: p.means undefined (type *EpsilonGreedy has no field or method means)
+bandit/epsgreedy_test.go:26:27: newEG(2, 0.05).Name undefined (type *EpsilonGreedy has no field or method Name)
+bandit/epsgreedy_test.go:33:4: p.means undefined (type *EpsilonGreedy has no field or method means)
+bandit/epsgreedy_test.go:40:4: q.means undefined (type *EpsilonGreedy has no field or method means)
+FAIL	banditlab/bandit [build failed]
+FAIL
